@@ -249,7 +249,9 @@ function RoomsTab() {
                 type="number"
                 min={1}
                 defaultValue={
-                  editingRoom ? (beds?.filter((b) => b.roomId === editingRoom._id).length ?? "") : ""
+                  editingRoom
+                    ? beds?.filter((b) => b.roomId === editingRoom._id).length || ""
+                    : ""
                 }
               />
             </Field>
