@@ -124,7 +124,9 @@ export default function BookPage() {
     const service = availability?.services.find((s) => s.serviceId === id);
     return sum + (service ? service.price * qty : 0);
   }, 0);
-  const total = (selectedPackage?.price ?? selectedRoom?.totalForStay ?? 0) + servicesTotal;
+  // Kymata packages are priced per person
+  const packageTotal = selectedPackage ? selectedPackage.price * Math.max(1, totalGuests) : null;
+  const total = (packageTotal ?? selectedRoom?.totalForStay ?? 0) + servicesTotal;
 
   const leadValid = lead.fullName.trim().length >= 2 && EMAIL_RE.test(lead.email);
   const companionsValid = companions.every((c) => c.name.trim().length >= 2);
@@ -247,7 +249,7 @@ export default function BookPage() {
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
           <div>
-            <p className="font-black tracking-tight">Get Salty Morocco</p>
+            <p className="font-black tracking-tight">Kymata Surf Morocco</p>
             <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
           </div>
         </div>
@@ -565,8 +567,11 @@ export default function BookPage() {
                                 <p className="text-sm font-bold">{pkg.name}</p>
                                 <p className="mt-0.5 text-xs text-ink-faint">{pkg.description}</p>
                               </div>
-                              <p className="num shrink-0 font-bold text-ocean-700">
+                              <p className="num shrink-0 text-right font-bold text-ocean-700">
                                 {eur(pkg.price)}
+                                <span className="block text-[10px] font-medium text-ink-faint">
+                                  / person / week
+                                </span>
                               </p>
                             </div>
                           </button>
@@ -1041,8 +1046,13 @@ function SummaryCard({
         {room && pkg ? (
           <>
             <div className="flex justify-between gap-3">
-              <span className="font-semibold">{pkg.name}</span>
-              <span className="num font-semibold">{eur(pkg.price)}</span>
+              <span className="font-semibold">
+                {pkg.name}
+                <span className="block text-xs font-normal text-ink-faint">
+                  {eur(pkg.price)} / person × {guests}
+                </span>
+              </span>
+              <span className="num font-semibold">{eur(pkg.price * Math.max(1, guests))}</span>
             </div>
             <p className="text-xs text-ink-faint">All-inclusive · staying in {room.name}</p>
           </>
@@ -1269,7 +1279,7 @@ function PaymentStep({
             <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm">
               <p>
                 <span className="text-xs text-ink-faint">Beneficiary </span>
-                <span className="font-semibold">Get Salty Surf Camp SARL</span>
+                <span className="font-semibold">Kymata Surf Morocco SARL</span>
               </p>
               <p className="num mt-1">
                 <span className="font-sans text-xs text-ink-faint">IBAN </span>

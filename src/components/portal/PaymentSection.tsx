@@ -15,7 +15,7 @@ import { Button, Field, Input, cx } from "../ui";
 import { eur } from "../../lib/format";
 
 const BANK_DETAILS = {
-  beneficiary: "Get Salty Surf Camp SARL",
+  beneficiary: "Kymata Surf Morocco SARL",
   bank: "Banque du Souss (simulation)",
   iban: "MA64 0117 6400 0221 0000 5312 84",
   bic: "BDSXMAMC",

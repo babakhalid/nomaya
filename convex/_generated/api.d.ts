@@ -28,6 +28,7 @@ import type * as portal from "../portal.js";
 import type * as publicBooking from "../publicBooking.js";
 import type * as requests from "../requests.js";
 import type * as seed from "../seed.js";
+import type * as seedKymata from "../seedKymata.js";
 import type * as users from "../users.js";
 
 import type {
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   publicBooking: typeof publicBooking;
   requests: typeof requests;
   seed: typeof seed;
+  seedKymata: typeof seedKymata;
   users: typeof users;
 }>;
 

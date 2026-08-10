@@ -72,7 +72,7 @@ export default function SignInPage() {
             <img src="/mascot.png" alt="" className="h-9 w-9 object-contain" />
           </span>
           <span className="text-lg font-black tracking-tight">
-            Get Salty Surf Camp
+            Kymata Surf Morocco
           </span>
         </div>
 
@@ -119,7 +119,7 @@ export default function SignInPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-100">
               <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
             </span>
-            <span className="font-black tracking-tight">Get Salty Surf Camp</span>
+            <span className="font-black tracking-tight">Kymata Surf Morocco</span>
           </div>
 
           <h2 className="form-item text-2xl font-black tracking-tight">

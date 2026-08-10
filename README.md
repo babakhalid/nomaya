@@ -1,4 +1,4 @@
-# Get Salty — Tamraght Surf Camp PMS
+# Kymata Surf Morocco — PMS
 
 Get Salty's property-management system (fork of the Nomaya PMS): channel-manager-style calendar
 (rooms **and** dorm beds), booking channels hub (Channex.io-shaped, sandboxed),

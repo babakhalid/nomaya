@@ -218,10 +218,10 @@ export const setup = internalAction({
 
     const propertyResult = await channexFetch("/properties", "POST", {
       property: {
-        title: "Get Salty Morocco",
+        title: "Kymata Surf Morocco",
         currency: "EUR",
-        email: "getsaltymorocco@gmail.com",
-        phone: "+212641749938",
+        email: "contact@kymatasurfmorocco.com",
+        phone: "+212611812757",
         zip_code: "80750",
         country: "MA",
         city: "Agadir",

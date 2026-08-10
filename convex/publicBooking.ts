@@ -223,7 +223,7 @@ export const createRequest = mutation({
       const pkg = await ctx.db.get(args.packageId);
       if (!pkg || !pkg.active) throw new Error("Package not available");
       if (pkg.nights !== nights) throw new Error("Package doesn't match your stay length");
-      totalAmount = pkg.price;
+      totalAmount = pkg.price * Math.max(1, pax); // per-person packages
     }
 
     // Extra services picked at booking time (multiple allowed)

@@ -22,14 +22,14 @@ export type ConfirmationData = {
 };
 
 const HOUSE = {
-  brand: "Get Salty Morocco",
-  legal: "Legal registration: Disconnect Travel SARL | ICE: 003424261000018",
-  address1: "Hay Tissaliouine Tamraght Aourir",
-  address2: "Agadir, 80750",
-  email: "getsaltymorocco@gmail.com",
-  phone: "+212641749938",
-  signer: "Soufiane Boulahyaoui",
-  signerTitle: "Founder",
+  brand: "Kymata Surf Morocco",
+  legal: "Legal registration: Kymata Surf Morocco SARL",
+  address1: "Tamraght, Aourir",
+  address2: "Agadir, Morocco",
+  email: "contact@kymatasurfmorocco.com",
+  phone: "+212611812757",
+  signer: "The Kymata Team",
+  signerTitle: "Kymata Surf Morocco",
 };
 
 const longDate = (iso: string) => format(new Date(`${iso}T12:00:00`), "MMMM do, yyyy");
@@ -86,7 +86,7 @@ export function downloadBookingConfirmation(data: ConfirmationData) {
   y += 22;
 
   const intro = doc.splitTextToSize(
-    "We are writing to confirm your reservation with Get Salty Guest house. Below are the details of your booking:",
+    "We are writing to confirm your reservation with Kymata Surf Morocco. Below are the details of your booking:",
     textWidth,
   );
   doc.text(intro, margin, y);
