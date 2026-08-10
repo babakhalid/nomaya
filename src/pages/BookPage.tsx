@@ -244,7 +244,7 @@ export default function BookPage() {
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <Link
             to="/"
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1.5"
           >
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>

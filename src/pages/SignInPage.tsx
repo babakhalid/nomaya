@@ -68,7 +68,7 @@ export default function SignInPage() {
       {/* Left — brand panel */}
       <div className="relative hidden flex-col justify-between overflow-hidden bg-ocean-900 p-12 text-sand-50 lg:flex lg:w-[46%]">
         <div className="hero-line flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90 backdrop-blur">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1.5 backdrop-blur">
             <img src="/mascot.png" alt="" className="h-9 w-9 object-contain" />
           </span>
           <span className="text-lg font-black tracking-tight">
@@ -116,7 +116,7 @@ export default function SignInPage() {
       <div className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <div className="form-item mb-8 flex items-center gap-2.5 lg:hidden">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-100">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-900 p-1.5">
               <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
             </span>
             <span className="font-black tracking-tight">Kymata Surf Morocco</span>

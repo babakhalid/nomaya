@@ -63,7 +63,7 @@ export default function GuestPortalPage() {
     return (
       <div className="flex min-h-[100dvh] items-center justify-center px-6">
         <div className="text-center">
-          <img src="/mascot.png" alt="" className="mx-auto h-16 w-16 object-contain opacity-80" />
+          <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-ocean-900 p-3"><img src="/mascot.png" alt="" className="h-full w-full object-contain" /></span>
           <h1 className="mt-4 text-xl font-black tracking-tight">This link isn't active</h1>
           <p className="mt-2 text-sm text-ink-faint">
             Ask the surf house to send you a fresh portal link.
@@ -147,7 +147,7 @@ export default function GuestPortalPage() {
       <div className="bg-ocean-900 px-6 pb-16 pt-10 text-sand-50">
         <div className="mx-auto max-w-xl">
           <div className="portal-item flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1.5">
               <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
             </span>
             <span className="font-black tracking-tight">Kymata Surf Morocco</span>

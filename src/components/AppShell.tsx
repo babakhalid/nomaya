@@ -36,7 +36,7 @@ const RANK = { crew: 0, manager: 1, admin: 2 } as const;
 function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-100">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-ocean-900 p-1.5">
         <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
       </span>
       <div className="leading-tight">
