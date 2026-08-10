@@ -266,6 +266,7 @@ export default function BookPage() {
             open={guestsOpen}
             setOpen={(open) => {
               setGuestsOpen(open);
+              if (open) setDatesOpen(false);
               if (!open && totalGuests > 0 && !datesValid) setDatesOpen(true);
             }}
           />
@@ -275,7 +276,10 @@ export default function BookPage() {
             setCheckIn={setCheckIn}
             setCheckOut={setCheckOut}
             open={datesOpen}
-            setOpen={setDatesOpen}
+            setOpen={(open) => {
+              setDatesOpen(open);
+              if (open) setGuestsOpen(false);
+            }}
             availability={calendarData}
             today={today}
             disabled={confirmation !== null}
