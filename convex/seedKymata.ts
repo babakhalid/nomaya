@@ -204,3 +204,151 @@ export const run = internalMutation({
     return "Kymata seeded: 8 rooms (~21 guests), 4 per-person packages, demo bookings.";
   },
 });
+
+/**
+ * Replace placeholder inventory with Kymata's 8 REAL rooms (21 guests exactly)
+ * and rebuild the demo bookings on them. Idempotent (skips if AZURA exists).
+ * Run with: npx convex run seedKymata:setRealRooms (add --prod)
+ */
+export const setRealRooms = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existingRooms = await ctx.db.query("rooms").collect();
+    if (existingRooms.some((r) => r.name === "AZURA")) {
+      return "Real rooms already set up — skipping.";
+    }
+    const today = new Date();
+    const day = (offset: number) => isoAddDays(today, offset);
+
+    // wipe inventory + booking data (catalog: activities/services/packages stay)
+    for (const table of [
+      "payments", "bookingActivities", "bookingServices", "guestRequests",
+      "channelRequests", "bookings", "guests", "beds", "rooms", "roomTypes",
+    ] as const) {
+      for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(row._id);
+    }
+
+    // ── Room types ──
+    const double = await ctx.db.insert("roomTypes", {
+      name: "Double · Private Bathroom", mode: "private", capacity: 2,
+      basePrice: 55, amenities: ["Private bathroom"],
+    });
+    const doubleBalcony = await ctx.db.insert("roomTypes", {
+      name: "Double · Balcony Sea View", mode: "private", capacity: 2,
+      basePrice: 65, amenities: ["Private balcony", "Sea view", "Private bathroom"],
+    });
+    const twin = await ctx.db.insert("roomTypes", {
+      name: "Twin · Private Bathroom", mode: "private", capacity: 2,
+      basePrice: 50, amenities: ["Two single beds", "Private bathroom"],
+    });
+    const triple = await ctx.db.insert("roomTypes", {
+      name: "Triple · Private Bathroom", mode: "private", capacity: 3,
+      basePrice: 70, amenities: ["Private bathroom"],
+    });
+    const quad = await ctx.db.insert("roomTypes", {
+      name: "Quadruple · Private Bathroom", mode: "private", capacity: 4,
+      basePrice: 90, amenities: ["Private bathroom"],
+    });
+
+    // ── The 8 real rooms ──
+    const rooms: { name: string; typeId: Id<"roomTypes">; image: string; description: string }[] = [
+      { name: "AZURA", typeId: triple, image: "/rooms/azura.jpg",
+        description: "A bright triple room with Moroccan arched windows, traditional tiled floors and private bathroom. Perfect for three friends or a small group. Beds: 1 double + 1 single." },
+      { name: "CORALYS", typeId: triple, image: "/rooms/coralys.jpg",
+        description: "Spacious triple room bathed in warm light, featuring authentic Moroccan décor, hand-woven rugs and a private en-suite bathroom. Beds: 3 singles." },
+      { name: "LUVIA", typeId: quad, image: "/rooms/luvia.jpg",
+        description: "Our largest room, ideal for groups of 4. Generous space, natural materials, Moroccan tile floors and a fully private bathroom. Beds: 4 singles." },
+      { name: "MIRAE", typeId: twin, image: "/rooms/mirae.jpg",
+        description: "A cozy twin room featuring two comfortable beds, warm tadelakt walls, traditional tilework and a private bathroom with shower." },
+      { name: "NÉREA", typeId: twin, image: "/rooms/nerea.jpg",
+        description: "Light-filled twin room with beautiful Moroccan arch window, natural wood hangers and private bathroom. Ideal for two travelers." },
+      { name: "ORYA", typeId: triple, image: "/rooms/orya.jpg",
+        description: "Warm and welcoming triple room with three beds, colorful Berber rugs, and natural light flowing through Moroccan-style windows. Beds: 3 singles." },
+      { name: "SOLAN", typeId: double, image: "/rooms/solan.jpg",
+        description: "An intimate double room with a king bed, stunning arched window with terracotta view, and private bathroom. Perfect for couples." },
+      { name: "TIMOULAY", typeId: doubleBalcony, image: "/rooms/timoulay.jpg",
+        description: "Our premium double room with a private balcony and stunning sea views. Large sliding glass door, private bathroom and authentic Moroccan touches." },
+    ];
+    const roomIds: Record<string, Id<"rooms">> = {};
+    for (let i = 0; i < rooms.length; i++) {
+      roomIds[rooms[i].name] = await ctx.db.insert("rooms", {
+        roomTypeId: rooms[i].typeId, name: rooms[i].name, status: "available",
+        description: rooms[i].description, imageUrl: rooms[i].image, sortOrder: i,
+      });
+    }
+
+    // ── Rebuild demo bookings on the real rooms ──
+    const activities = await ctx.db.query("activities").collect();
+    const byName = (n: string) => activities.find((a) => a.name === n);
+    const surf = byName("Surf Session");
+    const yoga = byName("Sunset Yoga");
+    const bonfire = byName("Bonfire on the Beach");
+
+    const marie = await ctx.db.insert("guests", {
+      fullName: "Marie Lefebvre", email: "marie.lefebvre@gmail.com",
+      phone: "+33 6 52 44 18 90", country: "France", surfLevel: "beginner",
+    });
+    const tom = await ctx.db.insert("guests", {
+      fullName: "Tom Krüger", email: "tom.krueger@gmx.de",
+      phone: "+49 171 555 2381", country: "Germany", surfLevel: "intermediate",
+      allergies: "Vegetarian",
+    });
+    const laila = await ctx.db.insert("guests", {
+      fullName: "Laila Mansouri", email: "laila.mansouri@gmail.com",
+      phone: "+212 6 11 81 27 57", country: "Morocco", surfLevel: "beginner",
+    });
+
+    const mkBooking = (guestId: Id<"guests">, roomName: string, checkIn: string, checkOut: string,
+      status: "confirmed" | "checked_in", source: "direct" | "booking_com", adults: number, total: number) =>
+      ctx.db.insert("bookings", {
+        guestId, roomId: roomIds[roomName], checkIn, checkOut, status, source,
+        adults, children: 0, totalAmount: total, currency: "EUR",
+        notes: "[Demo]", portalToken: generatePortalToken(),
+        reservationCode: generateReservationCode(),
+      });
+
+    const bMarie = await mkBooking(marie, "TIMOULAY", day(-2), day(5), "checked_in", "direct", 2, 1100);
+    const bTom = await mkBooking(tom, "CORALYS", day(1), day(8), "confirmed", "booking_com", 3, 1470);
+    const bLaila = await mkBooking(laila, "LUVIA", day(3), day(10), "confirmed", "direct", 2, 1190);
+
+    const addAct = (bookingId: Id<"bookings">, activityId: Id<"activities"> | undefined, date: string, participants: number) =>
+      activityId ? ctx.db.insert("bookingActivities", { bookingId, activityId, date, participants }) : Promise.resolve(null);
+    for (let i = 0; i < 4; i++) await addAct(bMarie, surf?._id, day(i), 2);
+    await addAct(bMarie, yoga?._id, day(0), 2);
+    await addAct(bMarie, bonfire?._id, day(1), 2);
+    await addAct(bTom, surf?._id, day(2), 3);
+    await addAct(bLaila, yoga?._id, day(4), 2);
+
+    await ctx.db.insert("payments", {
+      bookingId: bMarie, amount: 300, currency: "EUR", method: "bank_transfer",
+      direction: "in", date: day(-10), note: "Deposit",
+    });
+    await ctx.db.insert("payments", {
+      bookingId: bMarie, amount: 800, currency: "EUR", method: "cash",
+      direction: "in", date: day(-2), note: "Balance at check-in",
+    });
+    await ctx.db.insert("payments", {
+      bookingId: bTom, amount: 450, currency: "EUR", method: "card",
+      direction: "in", date: day(-5), note: "Deposit",
+    });
+    if (yoga) {
+      await ctx.db.insert("guestRequests", {
+        bookingId: bLaila, type: "order",
+        payload: { activityId: yoga._id, qty: 2, date: day(5), note: "Sunset session on the rooftop please" },
+        status: "pending",
+      });
+    }
+    await ctx.db.insert("channels", {
+      name: "Booking.com", type: "booking_com", status: "mock", lastSyncAt: Date.now(),
+    });
+    await ctx.db.insert("channels", {
+      name: "Airbnb", type: "airbnb", status: "mock", lastSyncAt: Date.now(),
+    });
+
+    await ctx.db.insert("auditLogs", {
+      actorName: "System", action: "seed.kymataRealRooms", entity: "rooms",
+      summary: "Replaced placeholder inventory with the 8 real Kymata rooms (21 guests)",
+    });
+    return "8 real rooms created (AZURA…TIMOULAY, 21 guests) with rebuilt demo bookings.";
+  },
+});
