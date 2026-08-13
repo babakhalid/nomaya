@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { generatePortalToken, generateReservationCode } from "./lib/access";
 import { resolveRoomPhoto } from "./inventory";
+import { resolvePackagePhoto } from "./catalog";
 import { internal } from "./_generated/api";
 import { surfLevelValidator } from "./schema";
 
@@ -134,18 +135,18 @@ export const listPackages = query({
         )
       : 0;
     return {
-      packages: packages
+      packages: await Promise.all(packages
         .filter((p) => p.active)
         .sort((a, b) => a.price - b.price)
-        .map((p) => ({
+        .map(async (p) => ({
           packageId: p._id,
           name: p.name,
           description: p.description,
           price: p.price,
-          imageUrl: p.imageUrl,
+          imageUrl: await resolvePackagePhoto(ctx, p),
           perPerson: !!p.roomTypePrices,
           minGuests: p.minGuests,
-        })),
+        }))),
       roomOnlyFrom: Number.isFinite(cheapestRoom) ? cheapestRoom : 0,
     };
   },

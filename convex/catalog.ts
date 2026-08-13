@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { logAudit, requireRole, requireUser } from "./lib/access";
 import { packageItemValidator } from "./schema";
+import type { Id } from "./_generated/dataModel";
 
 // ── Activities ─────────────────────────────────────────────────────────
 
@@ -110,11 +111,28 @@ export const upsertService = mutation({
 
 // ── Packages ───────────────────────────────────────────────────────────
 
+export async function resolvePackagePhoto(
+  ctx: { storage: { getUrl: (id: Id<"_storage">) => Promise<string | null> } },
+  pkg: { imageStorageId?: Id<"_storage">; imageUrl?: string },
+) {
+  if (pkg.imageStorageId) {
+    const url = await ctx.storage.getUrl(pkg.imageStorageId);
+    if (url) return url;
+  }
+  return pkg.imageUrl;
+}
+
 export const listPackages = query({
   args: {},
   handler: async (ctx) => {
     await requireUser(ctx);
-    return await ctx.db.query("packages").collect();
+    const packages = await ctx.db.query("packages").collect();
+    return await Promise.all(
+      packages.map(async (pkg) => ({
+        ...pkg,
+        photoUrl: await resolvePackagePhoto(ctx, pkg),
+      })),
+    );
   },
 });
 
@@ -127,8 +145,21 @@ export const upsertPackage = mutation({
     nights: v.number(),
     includedItems: v.array(packageItemValidator),
     active: v.boolean(),
+    roomTypePrices: v.optional(
+      v.array(v.object({ roomTypeId: v.id("roomTypes"), price: v.number() })),
+    ),
+    minGuests: v.optional(v.number()),
   },
-  handler: async (ctx, { id, ...fields }) => {
+  handler: async (ctx, { id, ...raw }) => {
+    // An empty rate list means "flat-price package", not "no rooms allowed".
+    const fields = {
+      ...raw,
+      roomTypePrices:
+        raw.roomTypePrices && raw.roomTypePrices.length > 0
+          ? raw.roomTypePrices
+          : undefined,
+      minGuests: raw.minGuests && raw.minGuests > 1 ? raw.minGuests : undefined,
+    };
     const actor = await requireRole(ctx, "manager");
     if (id) {
       const before = await ctx.db.get(id);
@@ -152,5 +183,25 @@ export const upsertPackage = mutation({
       after: fields,
     });
     return newId;
+  },
+});
+
+
+export const setPackagePhoto = mutation({
+  args: { packageId: v.id("packages"), storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, "manager");
+    const pkg = await ctx.db.get(args.packageId);
+    if (!pkg) throw new Error("Package not found");
+    if (pkg.imageStorageId) {
+      await ctx.storage.delete(pkg.imageStorageId).catch(() => {});
+    }
+    await ctx.db.patch(args.packageId, { imageStorageId: args.storageId });
+    await logAudit(ctx, actor, {
+      action: "package.photo",
+      entity: "packages",
+      entityId: args.packageId,
+      summary: `Updated photo for package "${pkg.name}"`,
+    });
   },
 });

@@ -136,6 +136,7 @@ export default defineSchema({
     includedItems: v.array(packageItemValidator),
     active: v.boolean(),
     imageUrl: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     // BookingLayer-style formule: per-person price PER WEEK by room type,
     // prorated per night. Only listed room types can be booked with it.
     roomTypePrices: v.optional(

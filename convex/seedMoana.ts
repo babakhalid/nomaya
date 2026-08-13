@@ -1,4 +1,6 @@
 import { internalMutation } from "./_generated/server";
+import { generatePortalToken, generateReservationCode } from "./lib/access";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Moana Surf Experience — built from their onboarding canvas (tab 1) and the
@@ -355,5 +357,149 @@ export const setExperiencePrices = internalMutation({
     const cuisine = services.find((s) => s.name === "Cours de cuisine");
     if (cuisine) await ctx.db.patch(cuisine._id, { price: 15 });
     return "Prices updated.";
+  },
+});
+
+// Demo bookings/payments/requests so the platform looks alive for the
+// client walkthrough. Remove with demoCleanup.
+const DEMO_GUESTS = [
+  { fullName: "Léa Fontaine", email: "lea.fontaine@orange.fr", phone: "+33 6 48 12 97 35", country: "France", surfLevel: "beginner" as const },
+  { fullName: "Mathis Leroy", email: "mathis.leroy@gmail.com", phone: "+33 7 81 45 02 66", country: "France", surfLevel: "intermediate" as const },
+  { fullName: "Anouk Verhoeven", email: "anouk.verhoeven@gmail.com", phone: "+31 6 2483 9174", country: "Netherlands", surfLevel: "beginner" as const },
+  { fullName: "Jonas Weber", email: "jonas.weber@web.de", phone: "+49 176 4520 8813", country: "Germany", surfLevel: "advanced" as const },
+  { fullName: "Camille Roussel", email: "camille.roussel@hotmail.fr", phone: "+33 6 92 30 41 87", country: "France", surfLevel: "intermediate" as const },
+  { fullName: "Yasmine El Idrissi", email: "yasmine.elidrissi@gmail.com", phone: "+212 6 61 48 29 07", country: "Morocco", surfLevel: "beginner" as const },
+  { fullName: "Tomás Herrera", email: "tomas.herrera.v@gmail.com", phone: "+34 655 21 90 48", country: "Spain", surfLevel: "advanced" as const },
+  { fullName: "Ingrid Solberg", email: "ingrid.solberg@icloud.com", phone: "+47 928 41 566", country: "Norway", surfLevel: "beginner" as const },
+];
+
+export const demoData = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const rooms = await ctx.db.query("rooms").collect();
+    const packages = await ctx.db.query("packages").collect();
+    const roomBy = (name: string) => {
+      const r = rooms.find((x) => x.name === name);
+      if (!r) throw new Error(`Room not found: ${name}`);
+      return r._id;
+    };
+    const pkgBy = (name: string) =>
+      packages.find((x) => x.name === name)?._id;
+
+    const guestIds: Id<"guests">[] = [];
+    for (const g of DEMO_GUESTS) {
+      guestIds.push(await ctx.db.insert("guests", g));
+    }
+
+    // [guestIdx, room, checkIn, checkOut, status, source, adults, children, total, pkgName?, paid, method]
+    const B = [
+      [0, "Double or Twin", "2026-07-19", "2026-07-26", "checked_out", "direct", 2, 0, 1080, "Surfeur débutant / intermédiaire", 1080, "card"],
+      [1, "Double Room", "2026-07-27", "2026-08-03", "checked_out", "booking_com", 2, 0, 1440, "Surf & Yoga", 1440, "ota_payout"],
+      [2, "Double or Twin Sea View", "2026-08-09", "2026-08-16", "checked_in", "direct", 2, 0, 1080, "Surfeur débutant / intermédiaire", 500, "card"],
+      [3, "Double Sea View", "2026-08-11", "2026-08-18", "checked_in", "airbnb", 1, 0, 660, "Surf Guiding", 660, "ota_payout"],
+      [4, "Triple Room", "2026-08-18", "2026-08-25", "confirmed", "direct", 3, 0, 1710, "Surf & Yoga", 600, "bank_transfer"],
+      [5, "Double Room", "2026-08-21", "2026-08-25", "confirmed", "direct", 2, 0, 360, null, 120, "card"],
+      [6, "Quadruple Room", "2026-08-30", "2026-09-06", "confirmed", "booking_com", 4, 0, 1920, "Surf Guiding", 1920, "ota_payout"],
+      [7, "Double or Twin", "2026-09-05", "2026-09-12", "inquiry", "direct", 2, 0, 1080, "Surfeur débutant / intermédiaire", 0, null],
+    ] as const;
+
+    let n = 0;
+    for (const [gi, roomName, ci, co, status, source, adults, children, total, pkgName, paid, method] of B) {
+      const bookingId = await ctx.db.insert("bookings", {
+        guestId: guestIds[gi],
+        roomId: roomBy(roomName),
+        packageId: pkgName ? pkgBy(pkgName) : undefined,
+        checkIn: ci,
+        checkOut: co,
+        status,
+        source,
+        adults,
+        children,
+        totalAmount: total,
+        currency: "EUR",
+        portalToken: generatePortalToken(),
+        reservationCode: generateReservationCode(),
+      });
+      if (paid > 0 && method) {
+        await ctx.db.insert("payments", {
+          bookingId,
+          amount: paid,
+          currency: "EUR",
+          method,
+          direction: "in",
+          date: ci < "2026-08-13" ? ci : "2026-08-1" + String(2 - (n % 2)),
+          note: method === "ota_payout" ? "OTA payout" : undefined,
+        });
+      }
+      if (status === "checked_in" || status === "confirmed") {
+        const acts = await ctx.db.query("activities").collect();
+        const surf = acts.find((a) => a.name === "Surf Lesson");
+        if (surf && pkgName && pkgName !== "Surf Guiding") {
+          await ctx.db.insert("bookingActivities", {
+            bookingId,
+            activityId: surf._id,
+            date: ci,
+            participants: adults + children,
+          });
+        }
+      }
+      n++;
+    }
+
+    // A couple of pending guest requests for the Requests page
+    const inHouse = await ctx.db
+      .query("bookings")
+      .withIndex("by_guest", (q) => q.eq("guestId", guestIds[2]))
+      .first();
+    if (inHouse) {
+      await ctx.db.insert("guestRequests", {
+        bookingId: inHouse._id,
+        type: "requirement",
+        payload: { note: "Late checkout possible on Sunday? Our flight leaves at 21:40." },
+        status: "pending",
+      });
+    }
+    const guiding = await ctx.db
+      .query("bookings")
+      .withIndex("by_guest", (q) => q.eq("guestId", guestIds[3]))
+      .first();
+    if (guiding) {
+      await ctx.db.insert("guestRequests", {
+        bookingId: guiding._id,
+        type: "order",
+        payload: { note: "One massage after Thursday's session please.", qty: 1 },
+        status: "pending",
+      });
+    }
+    return `Demo: ${B.length} bookings for ${DEMO_GUESTS.length} guests.`;
+  },
+});
+
+export const demoCleanup = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const emails = new Set(DEMO_GUESTS.map((g) => g.email));
+    const guests = await ctx.db.query("guests").collect();
+    let n = 0;
+    for (const g of guests) {
+      if (!g.email || !emails.has(g.email)) continue;
+      const bookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_guest", (q) => q.eq("guestId", g._id))
+        .collect();
+      for (const b of bookings) {
+        for (const t of ["payments", "bookingActivities", "bookingServices", "guestRequests"] as const) {
+          const rows = await ctx.db
+            .query(t)
+            .withIndex("by_booking", (q) => q.eq("bookingId", b._id))
+            .collect();
+          for (const row of rows) await ctx.db.delete(row._id);
+        }
+        await ctx.db.delete(b._id);
+        n++;
+      }
+      await ctx.db.delete(g._id);
+    }
+    return `Removed ${n} demo bookings.`;
   },
 });
