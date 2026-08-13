@@ -152,31 +152,59 @@ export default function BookPage() {
     return sum + (service ? service.price * qty : 0);
   }, 0);
   const stayLines: { key: string; name: string; detail: string; amount: number }[] =
-    isFormule
-      ? orderedRooms.map((r, i) => {
-          const rate = formuleRate(r.roomTypeId) ?? 0;
-          return {
-            key: r.roomId,
-            name: r.name,
-            detail: `${occupantsByRoom[i]} × ${eur(rate)} / person / week`,
-            amount: Math.round(occupantsByRoom[i] * (rate / 7) * nightsCount * 100) / 100,
-          };
-        })
-      : selectedPackage && orderedRooms.length === 1
+    orderedRooms.length > 0
+      ? isFormule
+        ? orderedRooms.map((r, i) => {
+            const rate = formuleRate(r.roomTypeId) ?? 0;
+            return {
+              key: r.roomId,
+              name: r.name,
+              detail: `${occupantsByRoom[i]} × ${eur(rate)} / person / week`,
+              amount: Math.round(occupantsByRoom[i] * (rate / 7) * nightsCount * 100) / 100,
+            };
+          })
+        : selectedPackage && orderedRooms.length === 1
+          ? [
+              {
+                key: orderedRooms[0].roomId,
+                name: selectedPackage.name,
+                detail: `All-inclusive · staying in ${orderedRooms[0].name}`,
+                amount: selectedPackage.price,
+              },
+            ]
+          : orderedRooms.map((r) => ({
+              key: r.roomId,
+              name: r.name,
+              detail: `${eur(r.pricePerNight)} × ${nightsCount || "…"} nights`,
+              amount: r.totalForStay,
+            }))
+      : chosenFormule
         ? [
-            {
-              key: orderedRooms[0].roomId,
-              name: selectedPackage.name,
-              detail: `All-inclusive · staying in ${orderedRooms[0].name}`,
-              amount: selectedPackage.price,
-            },
+            // No room picked yet — count the formule from its lowest rate so
+            // the running total reflects the pack right after selection.
+            chosenFormule.perPerson
+              ? {
+                  key: "formule-estimate",
+                  name: chosenFormule.name,
+                  detail: `from ${eur(chosenFormule.price)} / person / week × ${Math.max(1, totalGuests)}${
+                    nightsCount ? ` · ${nightsCount} nights` : ""
+                  } (pick a room to finalise)`,
+                  amount:
+                    Math.round(
+                      Math.max(1, totalGuests) *
+                        chosenFormule.price *
+                        (nightsCount ? nightsCount / 7 : 1) *
+                        100,
+                    ) / 100,
+                }
+              : {
+                  key: "formule-estimate",
+                  name: chosenFormule.name,
+                  detail: "Package (pick a room to finalise)",
+                  amount: chosenFormule.price,
+                },
           ]
-        : orderedRooms.map((r) => ({
-            key: r.roomId,
-            name: r.name,
-            detail: `${eur(r.pricePerNight)} × ${nightsCount || "…"} nights`,
-            amount: r.totalForStay,
-          }));
+        : [];
   const stayTotal = Math.round(stayLines.reduce((sum, l) => sum + l.amount, 0) * 100) / 100;
   const total = Math.round((stayTotal + servicesTotal) * 100) / 100;
 
