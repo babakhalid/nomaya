@@ -318,3 +318,42 @@ export const setExperienceImages = internalMutation({
     return "Experience images set.";
   },
 });
+
+// Real activity/extra prices from the owner (2026-08-13).
+export const setExperiencePrices = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const activities = await ctx.db.query("activities").collect();
+    const actPrice: Record<string, number> = {
+      "Surf Lesson": 40, // per day
+      Yoga: 10,
+      "Cooking Class": 15,
+    };
+    for (const a of activities) {
+      const price = actPrice[a.name];
+      if (price !== undefined) await ctx.db.patch(a._id, { price });
+    }
+
+    const services = await ctx.db.query("services").collect();
+    // Split the combined service: Hammam €30, Massage €35.
+    const combined = services.find((s) => s.name === "Massage / Hammam");
+    if (combined) {
+      await ctx.db.patch(combined._id, { name: "Hammam", price: 30 });
+    } else {
+      const hammam = services.find((s) => s.name === "Hammam");
+      if (hammam) await ctx.db.patch(hammam._id, { price: 30 });
+    }
+    if (!services.some((s) => s.name === "Massage")) {
+      await ctx.db.insert("services", {
+        name: "Massage",
+        price: 35,
+        unit: "per_unit",
+        active: true,
+        imageUrl: "/experiences/hammam.jpg",
+      });
+    }
+    const cuisine = services.find((s) => s.name === "Cours de cuisine");
+    if (cuisine) await ctx.db.patch(cuisine._id, { price: 15 });
+    return "Prices updated.";
+  },
+});
