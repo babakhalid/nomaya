@@ -625,9 +625,25 @@ function PackagesTab() {
                 <p className="num shrink-0 text-lg font-bold text-ocean-700">{eur(pkg.price)}</p>
               </div>
               <ul className="mt-3 flex flex-wrap gap-1.5">
-                <li className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium">
-                  {pkg.nights} nights
-                </li>
+                {!pkg.roomTypePrices?.length && (
+                  <li className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium">
+                    {pkg.nights} nights
+                  </li>
+                )}
+                {(pkg.roomTypePrices ?? []).map((r) => (
+                  <li
+                    key={r.roomTypeId}
+                    className="num rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium"
+                  >
+                    {roomTypes?.find((rt) => rt._id === r.roomTypeId)?.name ?? "?"} ·{" "}
+                    {eur(r.price)}/p/w
+                  </li>
+                ))}
+                {pkg.minGuests ? (
+                  <li className="rounded-full bg-dune/15 px-2.5 py-0.5 text-xs font-medium text-[#8a6420]">
+                    min {pkg.minGuests} guests
+                  </li>
+                ) : null}
                 {pkg.includedItems.map((item, i) => (
                   <li key={i} className="rounded-full bg-ocean-50 px-2.5 py-0.5 text-xs font-medium text-ocean-800">
                     {item.qty}× {nameOf(item)}
@@ -691,23 +707,36 @@ function PackagesTab() {
               Leave blank where the formule isn't offered. If every field is blank, the
               pack uses the flat price above for its exact night count.
             </p>
-            <div className="flex flex-col gap-1.5">
-              {(roomTypes ?? []).map((rt) => (
-                <div key={rt._id} className="flex items-center gap-2">
-                  <span className="flex-1 truncate text-sm">{rt.name}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    placeholder="—"
-                    value={rtPrices[rt._id] ?? ""}
-                    onChange={(e) =>
-                      setRtPrices((prev) => ({ ...prev, [rt._id]: e.target.value }))
-                    }
-                    className="w-28"
-                  />
-                </div>
-              ))}
+            <div className="flex flex-col divide-y divide-sand-100 rounded-xl border border-sand-200 bg-white px-3">
+              {roomTypes === undefined ? (
+                <p className="py-3 text-sm text-ink-faint">Loading room types…</p>
+              ) : (
+                roomTypes.map((rt) => (
+                  <div key={rt._id} className="flex items-center gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold leading-snug">{rt.name}</p>
+                      <p className="text-xs text-ink-faint">
+                        sleeps {rt.capacity}
+                        {rt.mode === "dorm" ? " · dorm" : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="—"
+                        value={rtPrices[rt._id] ?? ""}
+                        onChange={(e) =>
+                          setRtPrices((prev) => ({ ...prev, [rt._id]: e.target.value }))
+                        }
+                        className="w-24 text-right"
+                      />
+                      <span className="text-xs text-ink-faint">€/p/w</span>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -790,9 +819,14 @@ function AddItemRow({
 }) {
   const [value, setValue] = useState("");
   const [qty, setQty] = useState(1);
+  const picked = value
+    ? value.startsWith("activity|")
+      ? activities.find((a) => `activity|${a._id}` === value)
+      : services.find((s) => `service|${s._id}` === value)
+    : undefined;
   return (
-    <div className="flex items-center gap-2">
-      <Select value={value} onChange={(e) => setValue(e.target.value)} className="flex-1">
+    <div className="flex flex-col gap-2">
+      <Select value={value} onChange={(e) => setValue(e.target.value)}>
         <option value="">Pick an item…</option>
         <optgroup label="Activities">
           {activities.map((a) => (
@@ -805,6 +839,10 @@ function AddItemRow({
           ))}
         </optgroup>
       </Select>
+      <div className="flex items-center gap-2">
+      <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
+        {picked ? picked.name : "Nothing selected"}
+      </span>
       <Input
         type="number"
         min={1}
@@ -826,6 +864,7 @@ function AddItemRow({
       >
         Add
       </Button>
+      </div>
     </div>
   );
 }
