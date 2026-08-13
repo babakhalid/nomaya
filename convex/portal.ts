@@ -22,16 +22,75 @@ async function bookingByToken(ctx: QueryCtx | MutationCtx, token: string) {
   return booking;
 }
 
+// Group bookings (one row per room) are linked through the companion rows'
+// notes: "billed on <primary reservationCode>". Any token in the group
+// resolves to the primary + all sibling rooms.
+const GROUP_MARKER = "billed on ";
+
+async function bookingGroup(
+  ctx: QueryCtx | MutationCtx,
+  booking: NonNullable<Awaited<ReturnType<typeof bookingByToken>>>,
+) {
+  let primary = booking;
+  const markerAt = booking.notes ? booking.notes.indexOf(GROUP_MARKER) : -1;
+  if (booking.notes && markerAt >= 0) {
+    const code = booking.notes.slice(markerAt + GROUP_MARKER.length).trim();
+    const found = code
+      ? await ctx.db
+          .query("bookings")
+          .withIndex("by_reservationCode", (q) => q.eq("reservationCode", code))
+          .unique()
+      : null;
+    if (found && found.status !== "cancelled") primary = found;
+  }
+  const siblings = primary.reservationCode
+    ? (
+        await ctx.db
+          .query("bookings")
+          .withIndex("by_guest", (q) => q.eq("guestId", primary.guestId))
+          .collect()
+      ).filter(
+        (b) =>
+          b._id !== primary._id &&
+          b.status !== "cancelled" &&
+          b.checkIn === primary.checkIn &&
+          (b.notes ?? "").includes(`${GROUP_MARKER}${primary.reservationCode}`),
+      )
+    : [];
+  return [primary, ...siblings];
+}
+
 export const stay = query({
   args: { token: v.string() },
   handler: async (ctx, args) => {
-    const booking = await bookingByToken(ctx, args.token);
-    if (!booking) return null;
+    const tokenBooking = await bookingByToken(ctx, args.token);
+    if (!tokenBooking) return null;
+    // Anchor the whole portal to the primary booking so every room's token
+    // shows the same reservation (bill, requests, code).
+    const group = await bookingGroup(ctx, tokenBooking);
+    const booking = group[0];
     const [guest, room] = await Promise.all([
       ctx.db.get(booking.guestId),
       ctx.db.get(booking.roomId),
     ]);
     const roomType = room ? await ctx.db.get(room.roomTypeId) : null;
+    const rooms = (
+      await Promise.all(
+        group.map(async (b) => {
+          const r = await ctx.db.get(b.roomId);
+          if (!r) return null;
+          const t = await ctx.db.get(r.roomTypeId);
+          return {
+            name: r.name,
+            typeName: t?.name,
+            description: r.description,
+            imageUrl: await resolveRoomPhoto(ctx, r),
+          };
+        }),
+      )
+    ).filter((r) => r !== null);
+    const totalAdults = group.reduce((n, b) => n + b.adults, 0);
+    const totalChildren = group.reduce((n, b) => n + b.children, 0);
     const pkg = booking.packageId ? await ctx.db.get(booking.packageId) : null;
     const [activities, services, myRequests, myActivities, myPayments] =
       await Promise.all([
@@ -69,8 +128,21 @@ export const stay = query({
       roomTypeName: roomType?.name,
       roomDescription: room?.description,
       roomImageUrl: room ? await resolveRoomPhoto(ctx, room) : undefined,
-      adults: booking.adults,
-      children: booking.children,
+      rooms,
+      guests: [
+        {
+          name: guest?.fullName ?? "Guest",
+          surfLevel: guest?.surfLevel,
+          lead: true,
+        },
+        ...(booking.companions ?? []).map((c) => ({
+          name: c.name,
+          surfLevel: c.surfLevel,
+          lead: false,
+        })),
+      ],
+      adults: totalAdults,
+      children: totalChildren,
       money: {
         total: booking.totalAmount,
         paid: Math.round(paid * 100) / 100,
