@@ -74,7 +74,7 @@ export default function BookPage() {
   const [datesOpen, setDatesOpen] = useState(false);
 
   // selection
-  const [roomId, setRoomId] = useState<Id<"rooms"> | null>(null);
+  const [roomIds, setRoomIds] = useState<Id<"rooms">[]>([]);
   const [packageId, setPackageId] = useState<string>("");
   const [selectedServices, setSelectedServices] = useState<Record<string, number>>({});
 
@@ -105,7 +105,7 @@ export default function BookPage() {
         { opacity: 1, y: 0, duration: 0.45, ease: "expo.out", stagger: 0.06 },
       );
     },
-    { scope, dependencies: [totalGuests > 0, datesValid, roomId, finished] },
+    { scope, dependencies: [totalGuests > 0, datesValid, roomIds.length, finished] },
   );
 
   // keep companions array sized to guests − 1
@@ -118,20 +118,38 @@ export default function BookPage() {
     });
   }
 
-  const selectedRoom = availability?.rooms.find((r) => r.roomId === roomId);
+  const selectedRooms = (availability?.rooms ?? []).filter((r) => roomIds.includes(r.roomId));
+  const selectedRoom = selectedRooms[0];
+  const selectedCapacity = selectedRooms.reduce(
+    (n, r) => n + (r.mode === "dorm" ? 1 : r.capacity),
+    0,
+  );
   const selectedPackage = availability?.packages.find((p) => p.packageId === packageId);
   const servicesTotal = Object.entries(selectedServices).reduce((sum, [id, qty]) => {
     const service = availability?.services.find((s) => s.serviceId === id);
     return sum + (service ? service.price * qty : 0);
   }, 0);
-  const total = (selectedPackage?.price ?? selectedRoom?.totalForStay ?? 0) + servicesTotal;
+  const roomsTotal = selectedRooms.reduce((sum, r) => sum + r.totalForStay, 0);
+  const stayTotal =
+    selectedPackage && selectedRooms.length === 1 ? selectedPackage.price : roomsTotal;
+  const total = stayTotal + servicesTotal;
+
+  function toggleRoom(id: Id<"rooms">) {
+    setRoomIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (next.length !== 1) setPackageId("");
+      return next;
+    });
+  }
 
   const leadValid = lead.fullName.trim().length >= 2 && EMAIL_RE.test(lead.email);
   const companionsValid = companions.every((c) => c.name.trim().length >= 2);
   const roomFits =
-    !!selectedRoom &&
-    selectedRoom.available &&
-    (selectedRoom.mode === "dorm" ? totalGuests === 1 : totalGuests <= selectedRoom.capacity);
+    selectedRooms.length > 0 &&
+    selectedRooms.every((r) => r.available) &&
+    (selectedRooms.some((r) => r.mode === "dorm")
+      ? selectedRooms.length === 1 && totalGuests === 1
+      : totalGuests <= selectedCapacity);
   const canPay =
     totalGuests > 0 && leadValid && companionsValid && datesValid && roomFits && !submitting;
 
@@ -144,22 +162,22 @@ export default function BookPage() {
           ? "Every guest needs a name"
           : !datesValid
             ? "Pick your dates"
-            : !selectedRoom
+            : selectedRooms.length === 0
               ? "Choose a room"
               : !roomFits
-                ? "This room doesn't fit your group"
+                ? `Selected rooms sleep ${selectedCapacity} — add another room for ${totalGuests} guests`
                 : ""
     : "";
 
   async function handleContinue() {
-    if (!canPay || !roomId || !checkIn || !checkOut) return;
+    if (!canPay || roomIds.length === 0 || !checkIn || !checkOut) return;
     setError(null);
     setSubmitting(true);
     try {
       const result = await createRequest({
         checkIn,
         checkOut,
-        roomId,
+        roomIds,
         packageId: packageId ? (packageId as Id<"packages">) : undefined,
         services: Object.entries(selectedServices).map(([serviceId, qty]) => ({
           serviceId: serviceId as Id<"services">,
@@ -453,26 +471,44 @@ export default function BookPage() {
               {/* Rooms */}
               {totalGuests > 0 && datesValid && (
                 <section className="flow-in mt-10">
-                  <h2 className="mb-3 font-bold tracking-tight">Where do you want to sleep?</h2>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-bold tracking-tight">Where do you want to sleep?</h2>
+                    {totalGuests > 1 && (
+                      <span
+                        className={cx(
+                          "num rounded-full px-3 py-1 text-xs font-bold",
+                          selectedCapacity >= totalGuests
+                            ? "bg-kelp/10 text-kelp"
+                            : "bg-dune/15 text-[#8a6420]",
+                        )}
+                      >
+                        {selectedCapacity >= totalGuests
+                          ? `${selectedCapacity} spots — all ${totalGuests} guests fit`
+                          : `${selectedCapacity}/${totalGuests} guests placed — combine rooms`}
+                      </span>
+                    )}
+                  </div>
+                  {totalGuests > 1 && (
+                    <p className="mb-3 text-xs text-ink-faint">
+                      Groups welcome — select several rooms until everyone has a bed.
+                    </p>
+                  )}
                   {availability === undefined ? (
                     <SkeletonRows count={3} />
                   ) : (
                     <div className="grid gap-4 sm:grid-cols-2">
                       {availability.rooms.map((room) => {
-                        const tooSmall =
-                          room.mode === "dorm" ? totalGuests > 1 : totalGuests > room.capacity;
+                        const dormBlocked =
+                          room.mode === "dorm" && (totalGuests > 1 || roomIds.length > 0);
                         const soldOut = !room.available;
-                        const disabled = soldOut || tooSmall;
-                        const selected = roomId === room.roomId;
+                        const disabled = soldOut || dormBlocked;
+                        const selected = roomIds.includes(room.roomId);
                         return (
                           <button
                             key={room.roomId}
                             type="button"
                             disabled={disabled}
-                            onClick={() => {
-                              setRoomId(room.roomId);
-                              setPackageId("");
-                            }}
+                            onClick={() => toggleRoom(room.roomId)}
                             className={cx(
                               "overflow-hidden rounded-xl2 border bg-white text-left transition-all",
                               disabled && "opacity-50",
@@ -490,9 +526,9 @@ export default function BookPage() {
                                   loading="lazy"
                                   className="h-40 w-full object-cover"
                                 />
-                                {(soldOut || tooSmall) && (
+                                {disabled && (
                                   <span className="absolute inset-0 flex items-center justify-center bg-ink/45 text-sm font-bold text-sand-50">
-                                    {soldOut ? "Booked for these dates" : `Sleeps ${room.capacity} max`}
+                                    {soldOut ? "Booked for these dates" : "Dorm beds: one guest per request"}
                                   </span>
                                 )}
                                 {selected && (
@@ -532,7 +568,13 @@ export default function BookPage() {
               {/* Packages + extras */}
               {selectedRoom && availability && (
                 <section className="flow-in mt-10 flex flex-col gap-8">
-                  {availability.packages.length > 0 && (
+                  {selectedRooms.length > 1 && availability.packages.length > 0 && (
+                    <p className="rounded-xl bg-sand-100 px-4 py-3 text-sm text-ink-soft">
+                      Packages apply to single-room stays — for your group, add surf
+                      lessons and extras à la carte below.
+                    </p>
+                  )}
+                  {selectedRooms.length === 1 && availability.packages.length > 0 && (
                     <div>
                       <h2 className="mb-1 font-bold tracking-tight">Make it a surf week?</h2>
                       <p className="mb-3 text-sm text-ink-faint">
@@ -700,7 +742,7 @@ export default function BookPage() {
               checkIn={checkIn}
               checkOut={checkOut}
               nights={availability?.nights}
-              room={selectedRoom}
+              rooms={selectedRooms}
               pkg={selectedPackage}
               services={availability?.services ?? []}
               selectedServices={selectedServices}
@@ -990,7 +1032,7 @@ function SummaryCard({
   checkIn,
   checkOut,
   nights,
-  room,
+  rooms,
   pkg,
   services,
   selectedServices,
@@ -1000,7 +1042,7 @@ function SummaryCard({
   checkIn: string | null;
   checkOut: string | null;
   nights?: number;
-  room?: { name: string; pricePerNight: number; totalForStay: number };
+  rooms: { name: string; pricePerNight: number; totalForStay: number }[];
   pkg?: { name: string; price: number };
   services: { serviceId: string; name: string; price: number }[];
   selectedServices: Record<string, number>;
@@ -1042,24 +1084,26 @@ function SummaryCard({
       </div>
 
       <div className="mt-4 flex flex-col gap-2 border-t border-sand-100 pt-4 text-sm">
-        {room && pkg ? (
+        {rooms.length === 1 && pkg ? (
           <>
             <div className="flex justify-between gap-3">
               <span className="font-semibold">{pkg.name}</span>
               <span className="num font-semibold">{eur(pkg.price)}</span>
             </div>
-            <p className="text-xs text-ink-faint">All-inclusive · staying in {room.name}</p>
+            <p className="text-xs text-ink-faint">All-inclusive · staying in {rooms[0].name}</p>
           </>
-        ) : room ? (
-          <div className="flex justify-between gap-3">
-            <span className="font-semibold">
-              {room.name}
-              <span className="block text-xs font-normal text-ink-faint">
-                {eur(room.pricePerNight)} × {nights ?? "…"} nights
+        ) : rooms.length > 0 ? (
+          rooms.map((room) => (
+            <div key={room.name} className="flex justify-between gap-3">
+              <span className="font-semibold">
+                {room.name}
+                <span className="block text-xs font-normal text-ink-faint">
+                  {eur(room.pricePerNight)} × {nights ?? "…"} nights
+                </span>
               </span>
-            </span>
-            <span className="num font-semibold">{eur(room.totalForStay)}</span>
-          </div>
+              <span className="num font-semibold">{eur(room.totalForStay)}</span>
+            </div>
+          ))
         ) : (
           <p className="text-ink-faint">No room selected yet.</p>
         )}

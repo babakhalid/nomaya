@@ -151,3 +151,25 @@ export const updatePricing = internalMutation({
     return changed.length ? changed.join("; ") : "Prices already correct.";
   },
 });
+
+/** Remove CLI test bookings (guest "Group Test"). */
+export const cleanupTest = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const guests = await ctx.db.query("guests").collect();
+    const test = guests.filter((g) => g.fullName === "Group Test");
+    let n = 0;
+    for (const g of test) {
+      const bookings = await ctx.db
+        .query("bookings")
+        .withIndex("by_guest", (q) => q.eq("guestId", g._id))
+        .collect();
+      for (const b of bookings) {
+        await ctx.db.delete(b._id);
+        n++;
+      }
+      await ctx.db.delete(g._id);
+    }
+    return `Removed ${n} test bookings.`;
+  },
+});

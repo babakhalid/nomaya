@@ -157,7 +157,7 @@ export const createRequest = mutation({
   args: {
     checkIn: v.string(),
     checkOut: v.string(),
-    roomId: v.id("rooms"),
+    roomIds: v.array(v.id("rooms")), // one or more rooms (groups can combine)
     packageId: v.optional(v.id("packages")),
     services: v.optional(
       v.array(v.object({ serviceId: v.id("services"), qty: v.number() })),
@@ -181,22 +181,33 @@ export const createRequest = mutation({
     if (fullName.length < 2 || fullName.length > 80) throw new Error("Please enter your name");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error("Please enter a valid email");
 
-    const chosenRoom = await ctx.db.get(args.roomId);
-    if (!chosenRoom || chosenRoom.status !== "available") {
-      throw new Error("Room not found");
-    }
-    const type = await ctx.db.get(chosenRoom.roomTypeId);
-    if (!type) throw new Error("Room type not found");
+    if (args.roomIds.length < 1) throw new Error("Pick at least one room");
+    if (args.roomIds.length > 5) throw new Error("Too many rooms in one request");
     if (args.adults < 1) throw new Error("At least one adult required");
     const pax = args.adults + args.children;
-    if (type.mode === "dorm" && pax > 1) {
-      throw new Error("Dorm beds are booked per person — submit one request per bed");
+
+    const chosenRooms = [];
+    for (const id of args.roomIds) {
+      const room = await ctx.db.get(id);
+      if (!room || room.status !== "available") throw new Error("Room not found");
+      const roomType = await ctx.db.get(room.roomTypeId);
+      if (!roomType) throw new Error("Room type not found");
+      chosenRooms.push({ room, type: roomType });
     }
-    if (pax > type.capacity) {
-      throw new Error(`${type.name} sleeps up to ${type.capacity}`);
+    const chosenRoom = chosenRooms[0].room;
+    const type = chosenRooms[0].type;
+
+    if (chosenRooms.some(({ type: t }) => t.mode === "dorm")) {
+      if (chosenRooms.length > 1 || pax > 1) {
+        throw new Error("Dorm beds are booked per person — submit one request per bed");
+      }
+    }
+    const totalCapacity = chosenRooms.reduce((n, { type: t }) => n + t.capacity, 0);
+    if (pax > totalCapacity) {
+      throw new Error(`The selected room(s) sleep up to ${totalCapacity}`);
     }
 
-    // Confirm the chosen room is still free (or grab a free bed in a dorm).
+    // Confirm every chosen room is still free (or grab a free bed in a dorm).
     const [beds, bookings] = await Promise.all([
       ctx.db.query("beds").collect(),
       ctx.db.query("bookings").collect(),
@@ -214,12 +225,22 @@ export const createRequest = mutation({
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .find((b) => !takenBeds.has(b._id))?._id;
       if (!bedId) throw new Error("Sorry — this room just filled up for those dates");
-    } else if (taken.some((b) => b.roomId === roomId)) {
-      throw new Error("Sorry — this room just got booked for those dates");
+    } else {
+      for (const { room } of chosenRooms) {
+        if (taken.some((b) => b.roomId === room._id)) {
+          throw new Error(`Sorry — ${room.name} just got booked for those dates`);
+        }
+      }
     }
 
-    let totalAmount = type.basePrice * nights;
+    let totalAmount = chosenRooms.reduce(
+      (sum, { type: t }) => sum + t.basePrice * nights,
+      0,
+    );
     if (args.packageId) {
+      if (chosenRooms.length > 1) {
+        throw new Error("Packages apply to single-room bookings — add extras à la carte for group stays");
+      }
       const pkg = await ctx.db.get(args.packageId);
       if (!pkg || !pkg.active) throw new Error("Package not available");
       if (pkg.nights !== nights) throw new Error("Package doesn't match your stay length");
@@ -300,6 +321,37 @@ export const createRequest = mutation({
       }
     }
 
+    // Additional rooms in a group booking: one booking row each so the
+    // calendar and availability stay correct; all billing sits on the
+    // primary reservation.
+    let adultsLeft = args.adults - Math.min(args.adults, type.capacity);
+    let childrenLeft =
+      args.children - Math.max(0, Math.min(args.children, type.capacity - Math.min(args.adults, type.capacity)));
+    for (const { room, type: roomType2 } of chosenRooms.slice(1)) {
+      const adultsHere = Math.min(Math.max(adultsLeft, 0), roomType2.capacity);
+      const childrenHere = Math.min(
+        Math.max(childrenLeft, 0),
+        Math.max(0, roomType2.capacity - adultsHere),
+      );
+      adultsLeft -= adultsHere;
+      childrenLeft -= childrenHere;
+      await ctx.db.insert("bookings", {
+        guestId,
+        roomId: room._id,
+        checkIn: args.checkIn,
+        checkOut: args.checkOut,
+        status: "inquiry",
+        source: "direct",
+        adults: adultsHere,
+        children: childrenHere,
+        totalAmount: 0,
+        currency: "EUR",
+        notes: `[Self-service] Group booking — billed on ${reservationCode}`,
+        portalToken: generatePortalToken(),
+        reservationCode: generateReservationCode(),
+      });
+    }
+
     await ctx.scheduler.runAfter(0, internal.channex.pushAvailability, {
       start: args.checkIn,
       end: args.checkOut,
@@ -319,6 +371,15 @@ export const createRequest = mutation({
       },
     });
 
-    return { portalToken, reservationCode, totalAmount, nights, roomTypeName: chosenRoom.name };
+    return {
+      portalToken,
+      reservationCode,
+      totalAmount,
+      nights,
+      roomTypeName:
+        chosenRooms.length > 1
+          ? chosenRooms.map(({ room }) => room.name).join(" + ")
+          : chosenRoom.name,
+    };
   },
 });
