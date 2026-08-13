@@ -247,7 +247,7 @@ export default function BookPage() {
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
           <div>
-            <p className="font-black tracking-tight">Get Salty Morocco</p>
+            <p className="font-black tracking-tight">Moana Surf Experience</p>
             <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
           </div>
         </div>
@@ -1273,7 +1273,7 @@ function PaymentStep({
             <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm">
               <p>
                 <span className="text-xs text-ink-faint">Beneficiary </span>
-                <span className="font-semibold">Get Salty Surf Camp SARL</span>
+                <span className="font-semibold">Moana Surf Experience SARL</span>
               </p>
               <p className="num mt-1">
                 <span className="font-sans text-xs text-ink-faint">IBAN </span>

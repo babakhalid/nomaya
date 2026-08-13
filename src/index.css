@@ -17,17 +17,17 @@
   --color-sand-800: #4a4033;
   --color-sand-900: #2e2820;
 
-  /* Get Salty purple (brand accent) */
-  --color-ocean-50: #f5f1fb;
-  --color-ocean-100: #ece3f8;
-  --color-ocean-200: #d9c8f0;
-  --color-ocean-300: #bda3e2;
-  --color-ocean-400: #a381d4;
-  --color-ocean-500: #8b62c9;
-  --color-ocean-600: #7a4fb8;
-  --color-ocean-700: #6a3fa6;
-  --color-ocean-800: #55328a;
-  --color-ocean-900: #3d2465;
+  /* Moana ocean teal (placeholder until brand colors provided) */
+  --color-ocean-50: #eefaf9;
+  --color-ocean-100: #d7f2f0;
+  --color-ocean-200: #b0e4e1;
+  --color-ocean-300: #7dcfcb;
+  --color-ocean-400: #4bb3ae;
+  --color-ocean-500: #2f948f;
+  --color-ocean-600: #257a76;
+  --color-ocean-700: #1f6360;
+  --color-ocean-800: #1b4f4d;
+  --color-ocean-900: #12302f;
 
   /* Warm off-black ink */
   --color-ink: #201c17;

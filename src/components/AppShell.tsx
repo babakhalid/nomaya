@@ -40,8 +40,8 @@ function Brand() {
         <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
       </span>
       <div className="leading-tight">
-        <p className="text-[15px] font-black tracking-tight">Get Salty</p>
-        <p className="text-[11px] font-medium text-ink-faint">Tamraght Surf Camp</p>
+        <p className="text-[15px] font-black tracking-tight">Moana</p>
+        <p className="text-[11px] font-medium text-ink-faint">Surf Experience · Tamraght</p>
       </div>
     </div>
   );

@@ -218,10 +218,10 @@ export const setup = internalAction({
 
     const propertyResult = await channexFetch("/properties", "POST", {
       property: {
-        title: "Get Salty Morocco",
+        title: "Moana Surf Experience",
         currency: "EUR",
-        email: "getsaltymorocco@gmail.com",
-        phone: "+212641749938",
+        email: "moanasurfmaroc@gmail.com",
+        phone: "+212622847675",
         zip_code: "80750",
         country: "MA",
         city: "Agadir",

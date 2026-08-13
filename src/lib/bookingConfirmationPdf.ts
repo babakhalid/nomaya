@@ -22,14 +22,14 @@ export type ConfirmationData = {
 };
 
 const HOUSE = {
-  brand: "Get Salty Morocco",
-  legal: "Legal registration: Disconnect Travel SARL | ICE: 003424261000018",
-  address1: "Hay Tissaliouine Tamraght Aourir",
+  brand: "Moana Surf Experience",
+  legal: "Legal registration: SARL | ICE: 3783962000022",
+  address1: "Ait Soual, Tamraght, Aourir",
   address2: "Agadir, 80750",
-  email: "getsaltymorocco@gmail.com",
-  phone: "+212641749938",
-  signer: "Soufiane Boulahyaoui",
-  signerTitle: "Founder",
+  email: "moanasurfmaroc@gmail.com",
+  phone: "+212622847675",
+  signer: "Nasr-edine Ousbaai",
+  signerTitle: "Owner",
 };
 
 const longDate = (iso: string) => format(new Date(`${iso}T12:00:00`), "MMMM do, yyyy");
@@ -86,7 +86,7 @@ export function downloadBookingConfirmation(data: ConfirmationData) {
   y += 22;
 
   const intro = doc.splitTextToSize(
-    "We are writing to confirm your reservation with Get Salty Guest house. Below are the details of your booking:",
+    "We are writing to confirm your reservation with Moana Surf Experience. Below are the details of your booking:",
     textWidth,
   );
   doc.text(intro, margin, y);
