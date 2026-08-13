@@ -178,3 +178,77 @@ export const cleanupTest = internalMutation({
     return `Removed ${n} test bookings.`;
   },
 });
+
+// Real Moana formules (per person per week, by room type) — replaces the
+// canvas placeholder packages. Idempotent: deactivates everything first.
+export const setFormules = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const roomTypes = await ctx.db.query("roomTypes").collect();
+    const idOf = (name: string) => {
+      const t = roomTypes.find((rt) => rt.name === name);
+      if (!t) throw new Error(`Room type not found: ${name}`);
+      return t._id;
+    };
+    const PRIVATE = ["Double Room", "Double Sea View · Private Bathroom"];
+    const SHARED = ["Double or Twin · Shared Bathroom", "Double or Twin Sea View · Shared Bathroom"];
+    const rates = (suite: number, double: number, triple: number, quad: number) => [
+      ...PRIVATE.map((n) => ({ roomTypeId: idOf(n), price: suite })),
+      ...SHARED.map((n) => ({ roomTypeId: idOf(n), price: double })),
+      { roomTypeId: idOf("Triple Room"), price: triple },
+      { roomTypeId: idOf("Quadruple Room"), price: quad },
+    ];
+
+    for (const pkg of await ctx.db.query("packages").collect()) {
+      await ctx.db.patch(pkg._id, { active: false });
+    }
+
+    const formules = [
+      {
+        name: "Surfeur débutant / intermédiaire",
+        description:
+          "À tous les surfeurs et surfeuses en devenir, pour bien commencer ou continuer sur de bonnes bases. Votre moniteur de surf est là pour vous apprendre ce sport en prenant un maximum de plaisir.",
+        price: 450,
+        roomTypePrices: rates(630, 540, 480, 450),
+        minGuests: undefined as number | undefined,
+      },
+      {
+        name: "Surf & Yoga",
+        description:
+          "Le surf et le yoga sont deux disciplines complémentaires du corps et de l'esprit. Les séances de yoga vous préparent à vos sessions de surf, et vous font gagner en force, souplesse et équilibre.",
+        price: 540,
+        roomTypePrices: rates(720, 630, 570, 540),
+        minGuests: undefined as number | undefined,
+      },
+      {
+        name: "Surf Guiding",
+        description:
+          "Recommandé pour les surfeurs de niveau confirmé qui souhaitent découvrir les meilleures vagues de la région. Cette formule se déroule au rythme de la houle, pour être au bon endroit au bon moment.",
+        price: 480,
+        roomTypePrices: rates(660, 570, 510, 480),
+        minGuests: 3 as number | undefined,
+      },
+      {
+        name: "Famille de Surfeurs",
+        description:
+          "Nous pensons aussi aux familles : nous organisons le séjour pour que vous n'ayez plus rien à penser et que tout le monde profite au maximum des vacances surf. Adulte 650 € / semaine — pour les enfants, contactez-nous.",
+        price: 650,
+        roomTypePrices: [{ roomTypeId: idOf("Quadruple Room"), price: 650 }],
+        minGuests: undefined as number | undefined,
+      },
+    ];
+    for (const f of formules) {
+      await ctx.db.insert("packages", {
+        name: f.name,
+        description: f.description,
+        price: f.price,
+        nights: 7,
+        includedItems: [],
+        active: true,
+        roomTypePrices: f.roomTypePrices,
+        minGuests: f.minGuests,
+      });
+    }
+    return `Seeded ${formules.length} formules.`;
+  },
+});

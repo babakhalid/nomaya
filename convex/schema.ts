@@ -127,10 +127,19 @@ export default defineSchema({
   packages: defineTable({
     name: v.string(),
     description: v.optional(v.string()),
+    // Flat price for classic packages; for formules with roomTypePrices
+    // this is the "from" price (lowest per-person weekly rate) for display.
     price: v.number(),
     nights: v.number(),
     includedItems: v.array(packageItemValidator),
     active: v.boolean(),
+    imageUrl: v.optional(v.string()),
+    // BookingLayer-style formule: per-person price PER WEEK by room type,
+    // prorated per night. Only listed room types can be booked with it.
+    roomTypePrices: v.optional(
+      v.array(v.object({ roomTypeId: v.id("roomTypes"), price: v.number() })),
+    ),
+    minGuests: v.optional(v.number()),
   }),
 
   // ── Guests & bookings ────────────────────────────────────────────────

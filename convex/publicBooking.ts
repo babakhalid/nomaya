@@ -76,6 +76,7 @@ export const availability = query({
         }
         return {
           roomId: room._id,
+          roomTypeId: room.roomTypeId,
           name: room.name,
           description: room.description,
           imageUrl: await resolveRoomPhoto(ctx, room),
@@ -91,14 +92,17 @@ export const availability = query({
     return {
       nights,
       rooms: roomCards,
-      // packages designed for exactly this stay length
+      // Formules (per-person weekly rates by room type) fit any stay length;
+      // classic flat packages only fit their exact night count.
       packages: packages
-        .filter((p) => p.active && p.nights === nights)
+        .filter((p) => p.active && (p.roomTypePrices ? true : p.nights === nights))
         .map((p) => ({
           packageId: p._id,
           name: p.name,
           description: p.description,
           price: p.price,
+          roomTypePrices: p.roomTypePrices,
+          minGuests: p.minGuests,
         })),
       services: services
         .filter((s) => s.active)
@@ -108,6 +112,40 @@ export const availability = query({
           price: s.price,
           unit: s.unit,
         })),
+    };
+  },
+});
+
+/** Formules for the landing step — shown before any dates are picked. */
+export const listPackages = query({
+  args: {},
+  handler: async (ctx) => {
+    const [packages, roomTypes, rooms] = await Promise.all([
+      ctx.db.query("packages").collect(),
+      ctx.db.query("roomTypes").collect(),
+      ctx.db.query("rooms").collect(),
+    ]);
+    const cheapestRoom = rooms.length
+      ? Math.min(
+          ...rooms
+            .filter((r) => r.status === "available")
+            .map((r) => roomTypes.find((t) => t._id === r.roomTypeId)?.basePrice ?? Infinity),
+        )
+      : 0;
+    return {
+      packages: packages
+        .filter((p) => p.active)
+        .sort((a, b) => a.price - b.price)
+        .map((p) => ({
+          packageId: p._id,
+          name: p.name,
+          description: p.description,
+          price: p.price,
+          imageUrl: p.imageUrl,
+          perPerson: !!p.roomTypePrices,
+          minGuests: p.minGuests,
+        })),
+      roomOnlyFrom: Number.isFinite(cheapestRoom) ? cheapestRoom : 0,
     };
   },
 });
@@ -233,18 +271,49 @@ export const createRequest = mutation({
       }
     }
 
+    // Guests are placed room by room (adults first). Used for pricing and
+    // for the per-room booking rows below.
+    const distribution: { adults: number; children: number }[] = [];
+    {
+      let adultsLeft = args.adults;
+      let childrenLeft = args.children;
+      for (const { type: t } of chosenRooms) {
+        const a = Math.min(adultsLeft, t.capacity);
+        const c = Math.min(childrenLeft, Math.max(0, t.capacity - a));
+        distribution.push({ adults: a, children: c });
+        adultsLeft -= a;
+        childrenLeft -= c;
+      }
+    }
+
     let totalAmount = chosenRooms.reduce(
       (sum, { type: t }) => sum + t.basePrice * nights,
       0,
     );
     if (args.packageId) {
-      if (chosenRooms.length > 1) {
-        throw new Error("Packages apply to single-room bookings — add extras à la carte for group stays");
-      }
       const pkg = await ctx.db.get(args.packageId);
       if (!pkg || !pkg.active) throw new Error("Package not available");
-      if (pkg.nights !== nights) throw new Error("Package doesn't match your stay length");
-      totalAmount = pkg.price;
+      if (pkg.roomTypePrices) {
+        // Formule: per-person weekly rate by room type, prorated per night.
+        if (pkg.minGuests && pax < pkg.minGuests) {
+          throw new Error(`${pkg.name} requires at least ${pkg.minGuests} guests`);
+        }
+        const rateByType = new Map(pkg.roomTypePrices.map((r) => [r.roomTypeId, r.price]));
+        let sum = 0;
+        chosenRooms.forEach(({ type: t }, i) => {
+          const weekly = rateByType.get(t._id);
+          if (weekly === undefined) throw new Error(`${pkg.name} is not offered in ${t.name}`);
+          const occupants = distribution[i].adults + distribution[i].children;
+          sum += occupants * (weekly / 7) * nights;
+        });
+        totalAmount = Math.round(sum * 100) / 100;
+      } else {
+        if (chosenRooms.length > 1) {
+          throw new Error("Packages apply to single-room bookings — add extras à la carte for group stays");
+        }
+        if (pkg.nights !== nights) throw new Error("Package doesn't match your stay length");
+        totalAmount = pkg.price;
+      }
     }
 
     // Extra services picked at booking time (multiple allowed)
@@ -271,12 +340,8 @@ export const createRequest = mutation({
     const reservationCode = generateReservationCode();
     // Each booking row carries only the guests sleeping in its own room, so
     // per-room occupancy (and group totals) stay correct.
-    const primaryAdults =
-      chosenRooms.length > 1 ? Math.min(args.adults, type.capacity) : args.adults;
-    const primaryChildren =
-      chosenRooms.length > 1
-        ? Math.min(args.children, Math.max(0, type.capacity - primaryAdults))
-        : args.children;
+    const primaryAdults = distribution[0].adults;
+    const primaryChildren = distribution[0].children;
     const bookingId = await ctx.db.insert("bookings", {
       guestId,
       roomId,
@@ -332,17 +397,9 @@ export const createRequest = mutation({
     // Additional rooms in a group booking: one booking row each so the
     // calendar and availability stay correct; all billing sits on the
     // primary reservation.
-    let adultsLeft = args.adults - Math.min(args.adults, type.capacity);
-    let childrenLeft =
-      args.children - Math.max(0, Math.min(args.children, type.capacity - Math.min(args.adults, type.capacity)));
-    for (const { room, type: roomType2 } of chosenRooms.slice(1)) {
-      const adultsHere = Math.min(Math.max(adultsLeft, 0), roomType2.capacity);
-      const childrenHere = Math.min(
-        Math.max(childrenLeft, 0),
-        Math.max(0, roomType2.capacity - adultsHere),
-      );
-      adultsLeft -= adultsHere;
-      childrenLeft -= childrenHere;
+    for (const [idx, { room }] of chosenRooms.slice(1).entries()) {
+      const adultsHere = distribution[idx + 1].adults;
+      const childrenHere = distribution[idx + 1].children;
       await ctx.db.insert("bookings", {
         guestId,
         roomId: room._id,
