@@ -111,6 +111,7 @@ export const availability = query({
           name: s.name,
           price: s.price,
           unit: s.unit,
+          imageUrl: s.imageUrl,
         })),
     };
   },

@@ -110,6 +110,7 @@ export default defineSchema({
     color: v.string(),
     active: v.boolean(),
     startTime: v.optional(v.string()), // daily fixed time, "HH:MM" 24h
+    imageUrl: v.optional(v.string()),
   }),
 
   services: defineTable({
@@ -122,6 +123,7 @@ export default defineSchema({
     ),
     active: v.boolean(),
     startTime: v.optional(v.string()), // e.g. breakfast at 09:00
+    imageUrl: v.optional(v.string()),
   }),
 
   packages: defineTable({

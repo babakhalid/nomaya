@@ -252,3 +252,69 @@ export const setFormules = internalMutation({
     return `Seeded ${formules.length} formules.`;
   },
 });
+
+// Attach experience photos to formules, activities and extras; add the two
+// missing excursions (camel + buggy/quad — prices are estimates to confirm).
+export const setExperienceImages = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const IMG = {
+      surf: "/experiences/surf.jpg",
+      yoga: "/experiences/yoga.jpg",
+      hammam: "/experiences/hammam.jpg",
+      cuisine: "/experiences/cuisine.jpg",
+      chameau: "/experiences/chameau.jpg",
+      quad: "/experiences/quad.jpg",
+    };
+    const packages = await ctx.db.query("packages").collect();
+    const pkgImage: Record<string, string> = {
+      "Surfeur débutant / intermédiaire": IMG.surf,
+      "Surf Guiding": IMG.surf,
+      "Famille de Surfeurs": IMG.surf,
+      "Surf & Yoga": IMG.yoga,
+    };
+    for (const pkg of packages) {
+      const img = pkgImage[pkg.name];
+      if (img) await ctx.db.patch(pkg._id, { imageUrl: img });
+    }
+
+    const activities = await ctx.db.query("activities").collect();
+    const actImage: Record<string, string> = {
+      "Surf Lesson": IMG.surf,
+      "Surf Guiding": IMG.surf,
+      Yoga: IMG.yoga,
+      "Cooking Class": IMG.cuisine,
+    };
+    for (const a of activities) {
+      const img = actImage[a.name];
+      if (img) await ctx.db.patch(a._id, { imageUrl: img });
+    }
+
+    const services = await ctx.db.query("services").collect();
+    for (const svc of services) {
+      if (svc.name === "Massage / Hammam") {
+        await ctx.db.patch(svc._id, { imageUrl: IMG.hammam });
+      }
+    }
+    const upserts = [
+      { name: "Cours de cuisine", price: 30, imageUrl: IMG.cuisine },
+      { name: "Balade en chameau", price: 25, imageUrl: IMG.chameau },
+      { name: "Balade en Buggy / Quad", price: 45, imageUrl: IMG.quad },
+    ];
+    for (const u of upserts) {
+      const existing = services.find((s) => s.name === u.name);
+      if (existing) {
+        await ctx.db.patch(existing._id, { imageUrl: u.imageUrl });
+      } else {
+        await ctx.db.insert("services", {
+          name: u.name,
+          price: u.price,
+          unit: "per_unit",
+          active: true,
+          imageUrl: u.imageUrl,
+        });
+      }
+    }
+    return "Experience images set.";
+  },
+});

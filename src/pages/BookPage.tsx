@@ -419,16 +419,41 @@ export default function BookPage() {
     <div ref={scope} className="min-h-[100dvh] bg-sand-50 pb-28 lg:pb-16">
       {/* Brand bar */}
       <div className="bg-ocean-900 px-4 py-4 text-sand-50 sm:px-6">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
           <Link
             to="/"
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90"
           >
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="font-black tracking-tight">Moana Surf Experience</p>
             <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
+          </div>
+          {/* Selected formule */}
+          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 py-1.5 pl-1.5 pr-4">
+            {chosenFormule?.imageUrl && (
+              <img
+                src={chosenFormule.imageUrl}
+                alt=""
+                className="h-10 w-14 rounded-lg object-cover"
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-ocean-300">Formule</p>
+              <p className="truncate text-sm font-bold leading-tight">
+                {chosenFormule?.name ?? "Bed & Breakfast"}
+              </p>
+            </div>
+            {!confirmation && (
+              <button
+                type="button"
+                onClick={() => setFormuleChosen(false)}
+                className="ml-1 text-xs font-semibold text-ocean-200 underline hover:text-sand-50 cursor-pointer"
+              >
+                change
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -462,17 +487,6 @@ export default function BookPage() {
             today={today}
             disabled={confirmation !== null}
           />
-          <button
-            type="button"
-            onClick={() => {
-              if (!confirmation) setFormuleChosen(false);
-            }}
-            disabled={confirmation !== null}
-            className="flex items-center gap-2 rounded-full border border-sand-300 bg-white px-4 py-2.5 text-sm transition-colors hover:border-ocean-500 cursor-pointer disabled:cursor-default disabled:opacity-60"
-          >
-            <span className="font-bold">{chosenFormule?.name ?? "Bed & Breakfast"}</span>
-            {!confirmation && <span className="text-xs text-ocean-700 underline">change</span>}
-          </button>
         </div>
       </div>
 
@@ -818,6 +832,14 @@ export default function BookPage() {
                               >
                                 {active && <Check size={13} weight="bold" />}
                               </button>
+                              {service.imageUrl && (
+                                <img
+                                  src={service.imageUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-11 w-14 shrink-0 rounded-lg object-cover"
+                                />
+                              )}
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold">{service.name}</p>
                                 <p className="text-xs text-ink-faint">
