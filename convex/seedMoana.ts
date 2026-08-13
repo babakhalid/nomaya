@@ -165,6 +165,11 @@ export const cleanupTest = internalMutation({
         .withIndex("by_guest", (q) => q.eq("guestId", g._id))
         .collect();
       for (const b of bookings) {
+        const payments = await ctx.db
+          .query("payments")
+          .withIndex("by_booking", (q) => q.eq("bookingId", b._id))
+          .collect();
+        for (const pay of payments) await ctx.db.delete(pay._id);
         await ctx.db.delete(b._id);
         n++;
       }
