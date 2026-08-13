@@ -269,6 +269,14 @@ export const createRequest = mutation({
 
     const portalToken = generatePortalToken();
     const reservationCode = generateReservationCode();
+    // Each booking row carries only the guests sleeping in its own room, so
+    // per-room occupancy (and group totals) stay correct.
+    const primaryAdults =
+      chosenRooms.length > 1 ? Math.min(args.adults, type.capacity) : args.adults;
+    const primaryChildren =
+      chosenRooms.length > 1
+        ? Math.min(args.children, Math.max(0, type.capacity - primaryAdults))
+        : args.children;
     const bookingId = await ctx.db.insert("bookings", {
       guestId,
       roomId,
@@ -278,8 +286,8 @@ export const createRequest = mutation({
       checkOut: args.checkOut,
       status: "inquiry",
       source: "direct",
-      adults: args.adults,
-      children: args.children,
+      adults: primaryAdults,
+      children: primaryChildren,
       totalAmount,
       currency: "EUR",
       notes: args.notes ? `[Self-service] ${args.notes}` : "[Self-service booking]",

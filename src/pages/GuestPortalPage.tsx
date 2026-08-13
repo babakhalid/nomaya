@@ -172,9 +172,13 @@ export default function GuestPortalPage() {
               </p>
             </div>
             <div>
-              <p className="text-xs text-ocean-300">Room</p>
+              <p className="text-xs text-ocean-300">
+                {stay.rooms.length > 1 ? "Rooms" : "Room"}
+              </p>
               <p className="mt-0.5 font-semibold">
-                {stay.roomName} · {stay.roomTypeName}
+                {stay.rooms.length > 1
+                  ? stay.rooms.map((r) => r.name).join(" + ")
+                  : `${stay.roomName} · ${stay.roomTypeName}`}
               </p>
             </div>
             <div>
@@ -190,8 +194,12 @@ export default function GuestPortalPage() {
                   guestCountry: stay.guestCountry,
                   reservationCode: stay.reservationCode,
                   bookingDate: stay.createdAt,
-                  roomName: stay.roomName ?? "",
-                  roomTypeName: stay.roomTypeName,
+                  roomName:
+                    stay.rooms.length > 1
+                      ? stay.rooms.map((r) => r.name).join(" + ")
+                      : (stay.roomName ?? ""),
+                  roomTypeName:
+                    stay.rooms.length > 1 ? undefined : stay.roomTypeName,
                   packageName: stay.packageName,
                   guests: stay.adults + stay.children,
                   checkIn: stay.checkIn,
@@ -230,33 +238,67 @@ export default function GuestPortalPage() {
       </div>
 
       <div className="mx-auto max-w-xl px-6 pb-20">
-        {/* Your room */}
-        {stay.roomImageUrl && (
+        {/* Your room(s) */}
+        {stay.rooms.filter((r) => r.imageUrl).map((room, i) => (
           <div
-            className="portal-item -mt-6 overflow-hidden rounded-xl2 border border-sand-200 bg-white"
+            key={room.name}
+            className={`portal-item ${i === 0 ? "-mt-6" : "mt-6"} overflow-hidden rounded-xl2 border border-sand-200 bg-white`}
             style={{ boxShadow: "var(--shadow-lift)" }}
           >
             <div className="relative">
               <img
-                src={stay.roomImageUrl}
-                alt={stay.roomName ?? "Your room"}
+                src={room.imageUrl}
+                alt={room.name}
                 className="h-56 w-full object-cover"
                 loading="lazy"
               />
               <span className="absolute bottom-3 left-3 rounded-full bg-ink/60 px-3 py-1 text-xs font-bold text-sand-50 backdrop-blur-sm">
-                {stay.roomName} · {stay.roomTypeName}
+                {room.name}
+                {room.typeName ? ` · ${room.typeName}` : ""}
               </span>
             </div>
-            {stay.roomDescription && (
+            {room.description && (
               <p className="px-5 py-4 text-sm leading-relaxed text-ink-soft">
-                {stay.roomDescription}
+                {room.description}
               </p>
             )}
           </div>
+        ))}
+
+        {/* Who's coming */}
+        {stay.guests.length > 1 && (
+          <section
+            className="portal-item mt-8 rounded-xl2 border border-sand-200 bg-white p-6"
+            style={{ boxShadow: "var(--shadow-diffuse)" }}
+          >
+            <h2 className="font-bold tracking-tight">Who's coming</h2>
+            <p className="mt-1 text-sm text-ink-faint">
+              Everyone on reservation {stay.reservationCode}.
+            </p>
+            <ul className="mt-4 flex flex-col divide-y divide-sand-100">
+              {stay.guests.map((g, i) => (
+                <li key={`${g.name}-${i}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <span className="font-semibold">{g.name}</span>
+                  <span className="flex items-center gap-2">
+                    {g.surfLevel && (
+                      <span className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-ink-soft">
+                        {g.surfLevel}
+                      </span>
+                    )}
+                    {g.lead && (
+                      <span className="rounded-full bg-ocean-800 px-2.5 py-0.5 text-xs font-bold text-sand-50">
+                        Lead guest
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {/* Preferences */}
-        <section className={`portal-item ${stay.roomImageUrl ? "mt-8" : "-mt-6"} rounded-xl2 border border-sand-200 bg-white p-6`} style={{ boxShadow: "var(--shadow-lift)" }}>
+        <section className={`portal-item ${stay.rooms.some((r) => r.imageUrl) || stay.guests.length > 1 ? "mt-8" : "-mt-6"} rounded-xl2 border border-sand-200 bg-white p-6`} style={{ boxShadow: "var(--shadow-lift)" }}>
           <h2 className="font-bold tracking-tight">About you</h2>
           <p className="mt-1 text-sm text-ink-faint">
             Helps us group surf sessions and cook the right food.
