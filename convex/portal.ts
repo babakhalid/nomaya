@@ -143,6 +143,9 @@ export const stay = query({
       ],
       adults: totalAdults,
       children: totalChildren,
+      // A self-service request only holds the room once a deposit (or the
+      // full amount) is in — until then the stay is a pending request.
+      confirmedStay: booking.status !== "inquiry" || paid > 0,
       money: {
         total: booking.totalAmount,
         paid: Math.round(paid * 100) / 100,
@@ -258,8 +261,11 @@ export const simulateCardPayment = mutation({
     cardLast4: v.string(),
   },
   handler: async (ctx, args) => {
-    const booking = await bookingByToken(ctx, args.token);
-    if (!booking) throw new Error("Invalid link");
+    const tokenBooking = await bookingByToken(ctx, args.token);
+    if (!tokenBooking) throw new Error("Invalid link");
+    // The bill lives on the primary booking of the group.
+    const group = await bookingGroup(ctx, tokenBooking);
+    const booking = group[0];
     if (!/^\d{4}$/.test(args.cardLast4)) throw new Error("Invalid card");
 
     const payments = await ctx.db
@@ -288,12 +294,19 @@ export const simulateCardPayment = mutation({
       date: today,
       note: `[SIMULATION] Stripe checkout by guest · card ••••${args.cardLast4}`,
     });
+    // First money in confirms the reservation — every room in the group.
+    const nowConfirmed = booking.status === "inquiry";
+    if (nowConfirmed) {
+      for (const b of group) {
+        if (b.status === "inquiry") await ctx.db.patch(b._id, { status: "confirmed" });
+      }
+    }
     await ctx.db.insert("auditLogs", {
       actorName: `Guest: ${guest?.fullName ?? "Unknown"}`,
       action: "portal.cardPayment",
       entity: "payments",
       entityId: id,
-      summary: `${guest?.fullName} paid €${amount.toFixed(2)} by card via portal (SIMULATION)`,
+      summary: `${guest?.fullName} paid €${amount.toFixed(2)} by card via portal (SIMULATION)${nowConfirmed ? " — reservation confirmed" : ""}`,
       after: { amount, cardLast4: args.cardLast4 },
     });
     return { paid: amount, newBalance: Math.round((balance - amount) * 100) / 100 };
@@ -312,8 +325,10 @@ export const declareBankTransfer = mutation({
     reference: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const booking = await bookingByToken(ctx, args.token);
-    if (!booking) throw new Error("Invalid link");
+    const tokenBooking = await bookingByToken(ctx, args.token);
+    if (!tokenBooking) throw new Error("Invalid link");
+    // Reference the primary booking so staff match the transfer to the bill.
+    const booking = (await bookingGroup(ctx, tokenBooking))[0];
     const amount = Math.round(args.amount * 100) / 100;
     if (amount < 1) throw new Error("Minimum transfer is €1");
     if (amount > 100000) throw new Error("Invalid amount");

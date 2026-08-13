@@ -156,7 +156,9 @@ export default function GuestPortalPage() {
             Salam, {stay.guestName.split(" ")[0]}.
           </h1>
           <p className="portal-item mt-2 text-ocean-200">
-            Your bed's ready. Tell us what you need before you land.
+            {stay.confirmedStay
+              ? "Your bed's ready. Tell us what you need before you land."
+              : "We got your request — pay a deposit below to lock in your room."}
           </p>
           <div className="portal-item mt-6 flex flex-wrap gap-x-8 gap-y-2 rounded-xl2 border border-white/10 bg-white/5 px-5 py-4 text-sm">
             {stay.reservationCode && (
@@ -165,6 +167,22 @@ export default function GuestPortalPage() {
                 <p className="num mt-0.5 font-bold tracking-wide">{stay.reservationCode}</p>
               </div>
             )}
+            <div>
+              <p className="text-xs text-ocean-300">Status</p>
+              <p className="mt-0.5 font-semibold">
+                {stay.confirmedStay ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                    Confirmed
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-amber-400" />
+                    Awaiting deposit
+                  </span>
+                )}
+              </p>
+            </div>
             <div>
               <p className="text-xs text-ocean-300">Stay</p>
               <p className="num mt-0.5 font-semibold">
@@ -238,11 +256,27 @@ export default function GuestPortalPage() {
       </div>
 
       <div className="mx-auto max-w-xl px-6 pb-20">
+        {/* Pending notice */}
+        {!stay.confirmedStay && (
+          <div
+            className="portal-item -mt-6 rounded-xl2 border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900"
+            style={{ boxShadow: "var(--shadow-lift)" }}
+          >
+            <p className="font-bold">
+              Your {stay.rooms.length > 1 ? "rooms are" : "room is"} not reserved yet.
+            </p>
+            <p className="mt-1">
+              A reservation is only confirmed once a deposit (or the full amount) is
+            paid. Head to the "Your bill" section below to secure your stay.
+            </p>
+          </div>
+        )}
+
         {/* Your room(s) */}
         {stay.rooms.filter((r) => r.imageUrl).map((room, i) => (
           <div
             key={room.name}
-            className={`portal-item ${i === 0 ? "-mt-6" : "mt-6"} overflow-hidden rounded-xl2 border border-sand-200 bg-white`}
+            className={`portal-item ${i === 0 && stay.confirmedStay ? "-mt-6" : "mt-6"} overflow-hidden rounded-xl2 border border-sand-200 bg-white`}
             style={{ boxShadow: "var(--shadow-lift)" }}
           >
             <div className="relative">
@@ -256,6 +290,11 @@ export default function GuestPortalPage() {
                 {room.name}
                 {room.typeName ? ` · ${room.typeName}` : ""}
               </span>
+              {!stay.confirmedStay && (
+                <span className="absolute right-3 top-3 rounded-full bg-amber-400/95 px-3 py-1 text-xs font-bold text-amber-950">
+                  Not reserved yet
+                </span>
+              )}
             </div>
             {room.description && (
               <p className="px-5 py-4 text-sm leading-relaxed text-ink-soft">
@@ -298,7 +337,7 @@ export default function GuestPortalPage() {
         )}
 
         {/* Preferences */}
-        <section className={`portal-item ${stay.rooms.some((r) => r.imageUrl) || stay.guests.length > 1 ? "mt-8" : "-mt-6"} rounded-xl2 border border-sand-200 bg-white p-6`} style={{ boxShadow: "var(--shadow-lift)" }}>
+        <section className={`portal-item ${stay.rooms.some((r) => r.imageUrl) || stay.guests.length > 1 || !stay.confirmedStay ? "mt-8" : "-mt-6"} rounded-xl2 border border-sand-200 bg-white p-6`} style={{ boxShadow: "var(--shadow-lift)" }}>
           <h2 className="font-bold tracking-tight">About you</h2>
           <p className="mt-1 text-sm text-ink-faint">
             Helps us group surf sessions and cook the right food.
