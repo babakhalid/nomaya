@@ -17,17 +17,17 @@
   --color-sand-800: #4a4033;
   --color-sand-900: #2e2820;
 
-  /* Moana ocean teal (placeholder until brand colors provided) */
-  --color-ocean-50: #eefaf9;
-  --color-ocean-100: #d7f2f0;
-  --color-ocean-200: #b0e4e1;
-  --color-ocean-300: #7dcfcb;
-  --color-ocean-400: #4bb3ae;
-  --color-ocean-500: #2f948f;
-  --color-ocean-600: #257a76;
-  --color-ocean-700: #1f6360;
-  --color-ocean-800: #1b4f4d;
-  --color-ocean-900: #12302f;
+  /* Moana brand: dusty pink #E7CAC3 + black */
+  --color-ocean-50: #faf4f2;
+  --color-ocean-100: #f4e5e1;
+  --color-ocean-200: #e7cac3;
+  --color-ocean-300: #d3a79c;
+  --color-ocean-400: #b98274;
+  --color-ocean-500: #96655a;
+  --color-ocean-600: #6e4a42;
+  --color-ocean-700: #4a332e;
+  --color-ocean-800: #2c211e;
+  --color-ocean-900: #171310;
 
   /* Warm off-black ink */
   --color-ink: #201c17;

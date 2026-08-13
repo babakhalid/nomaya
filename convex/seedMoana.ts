@@ -120,3 +120,34 @@ export const run = internalMutation({
     return "Moana seeded: 6 rooms (15 guests), catalog + 2 packages, clean calendar.";
   },
 });
+
+/** Apply the real nightly rates from the canvas room-type sheet. */
+export const updatePricing = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const prices: Record<string, number> = {
+      "Double or Twin · Shared Bathroom": 35,
+      "Double or Twin Sea View · Shared Bathroom": 35,
+      "Double Room": 35,
+      "Double Sea View · Private Bathroom": 45,
+      "Triple Room": 55, // estimate — no triple row in the canvas; confirm with client
+      "Quadruple Room": 90, // canvas "Entire Apartment (4p)" rate
+    };
+    const types = await ctx.db.query("roomTypes").collect();
+    const changed: string[] = [];
+    for (const type of types) {
+      const price = prices[type.name];
+      if (price !== undefined && type.basePrice !== price) {
+        await ctx.db.patch(type._id, { basePrice: price });
+        changed.push(`${type.name} → €${price}`);
+      }
+    }
+    if (changed.length) {
+      await ctx.db.insert("auditLogs", {
+        actorName: "System", action: "roomType.update", entity: "roomTypes",
+        summary: `Applied canvas pricing: ${changed.join(", ")}`,
+      });
+    }
+    return changed.length ? changed.join("; ") : "Prices already correct.";
+  },
+});
