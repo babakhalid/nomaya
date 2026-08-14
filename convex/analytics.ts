@@ -131,18 +131,39 @@ export const report = query({
       (s, p) => s + (p.direction === "in" ? p.amount : -p.amount),
       0,
     );
-    const totalExpenses = expenses
-      .filter((e) => e.date >= start && e.date <= end)
+    const expensesInRange = expenses.filter((e) => e.date >= start && e.date <= end);
+    const totalExpenses = expensesInRange.reduce((s, e) => s + e.amount, 0);
+    const payrollExpenses = expensesInRange
+      .filter((e) => e.category === "salary")
       .reduce((s, e) => s + e.amount, 0);
+    const fixedExpenses = expensesInRange
+      .filter((e) => e.kind === "fixed")
+      .reduce((s, e) => s + e.amount, 0);
+    const otherFixedExpenses = expensesInRange
+      .filter((e) => e.kind === "fixed" && e.category !== "salary")
+      .reduce((s, e) => s + e.amount, 0);
+    const variableExpenses = totalExpenses - fixedExpenses;
+
+    const rangeStartMs = Date.parse(start);
+    const rangeEndMs = Date.parse(end) + 86400000;
+    const newGuests = guests.filter(
+      (g) => g._creationTime >= rangeStartMs && g._creationTime < rangeEndMs,
+    ).length;
 
     return {
       monthly,
       bySource: Object.entries(bySource).map(([source, data]) => ({ source, ...data })),
       adr: totalNights === 0 ? 0 : Math.round((totalBookingValue / totalNights) * 100) / 100,
       totalBookings: inRange.length,
+      totalGuests: guests.length,
+      newGuests,
       totalNights,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
       totalExpenses: Math.round(totalExpenses * 100) / 100,
+      fixedExpenses: Math.round(fixedExpenses * 100) / 100,
+      variableExpenses: Math.round(variableExpenses * 100) / 100,
+      payrollExpenses: Math.round(payrollExpenses * 100) / 100,
+      otherFixedExpenses: Math.round(otherFixedExpenses * 100) / 100,
       activityPopularity: Object.values(activityPopularity).sort(
         (a, b) => b.participants - a.participants,
       ),
@@ -194,6 +215,8 @@ export const exportData = query({
         return {
           date: p.date,
           guest: booking ? (guestById.get(booking.guestId)?.fullName ?? "") : "",
+          reservation: booking?.reservationCode ?? "",
+          room: booking ? (roomById.get(booking.roomId)?.name ?? "") : "",
           amount: p.direction === "in" ? p.amount : -p.amount,
           method: p.method,
           currency: p.currency,
@@ -205,7 +228,8 @@ export const exportData = query({
       .filter((e) => e.date >= args.start && e.date <= args.end)
       .map((e) => ({
         date: e.date,
-        category: e.category,
+        category: e.category === "other" && e.customLabel ? `other — ${e.customLabel}` : e.category,
+        kind: e.kind ?? "variable",
         description: e.description,
         amount: e.amount,
         currency: e.currency,

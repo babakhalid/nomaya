@@ -16,9 +16,11 @@ import {
   SquaresFour,
   UsersThree,
   X,
+  Wallet,
 } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
 import { cx } from "./ui";
+import { Toaster } from "./toast";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: SquaresFour, min: "crew" },
@@ -27,6 +29,7 @@ const NAV = [
   { to: "/requests", label: "Requests", icon: Tray, min: "crew" },
   { to: "/channels", label: "Channels", icon: Plugs, min: "manager" },
   { to: "/analytics", label: "Analytics", icon: ChartLineUp, min: "manager" },
+  { to: "/team", label: "Team & expenses", icon: Wallet, min: "manager" },
   { to: "/settings", label: "Settings", icon: GearSix, min: "manager" },
   { to: "/logs", label: "Logs", icon: ClockCounterClockwise, min: "manager" },
 ] as const;
@@ -182,6 +185,7 @@ export default function AppShell() {
       <main ref={mainRef} className="min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 md:py-8 lg:px-10">
           <Outlet />
+      <Toaster />
         </div>
       </main>
     </div>

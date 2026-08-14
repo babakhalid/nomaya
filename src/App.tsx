@@ -13,6 +13,7 @@ import DashboardPage from "./pages/DashboardPage";
 import CalendarPage from "./pages/CalendarPage";
 import ChannelsPage from "./pages/ChannelsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import TeamExpensesPage from "./pages/TeamExpensesPage";
 import LogsPage from "./pages/LogsPage";
 import SettingsPage from "./pages/SettingsPage";
 import GuestPortalPage from "./pages/GuestPortalPage";
@@ -77,6 +78,14 @@ export default function App() {
                     element={
                       <RequireRole min="manager">
                         <AnalyticsPage />
+                      </RequireRole>
+                    }
+                  />
+                  <Route
+                    path="/team"
+                    element={
+                      <RequireRole min="manager">
+                        <TeamExpensesPage />
                       </RequireRole>
                     }
                   />

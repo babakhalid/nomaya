@@ -11,6 +11,7 @@ type GridRow = {
   label: string;
   typeName: string;
   mode: "private" | "dorm";
+  capacity: number;
   maintenance: boolean;
 };
 
@@ -94,6 +95,7 @@ export const grid = query({
           label: bed.label,
           typeName: type.name,
           mode: "dorm" as const,
+          capacity: 1,
           maintenance: room.status === "maintenance",
         }));
       }
@@ -106,6 +108,7 @@ export const grid = query({
           label: room.name,
           typeName: type?.name ?? "",
           mode: "private" as const,
+          capacity: type?.capacity ?? 2,
           maintenance: room.status === "maintenance",
         },
       ];

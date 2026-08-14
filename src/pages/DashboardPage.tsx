@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { useQuery } from "convex/react";
 import { format } from "date-fns";
@@ -14,6 +14,7 @@ import {
   Waves,
 } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
+import RangePicker from "../components/RangePicker";
 import {
   Badge,
   EmptyState,
@@ -157,19 +158,32 @@ function MovementList({
 export default function DashboardPage() {
   const today = isoToday();
   const monthStart = format(new Date(), "yyyy-MM-01");
+  const [rangeStart, setRangeStart] = useState(monthStart);
+  const [rangeEnd, setRangeEnd] = useState(today);
   const data = useQuery(api.dashboard.overview, { today, monthStart });
+  const period = useQuery(api.dashboard.period, { start: rangeStart, end: rangeEnd });
   const recentLogs = useQuery(api.auditLogs.recent);
   const outstanding = useQuery(api.payments.outstanding);
 
   return (
     <div>
-      <header className="mb-8">
-        <h1 className="text-2xl font-black tracking-tight">Morning briefing</h1>
-        <p className="mt-1 text-sm text-ink-faint">{prettyDateLong(today)}</p>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight">Morning briefing</h1>
+          <p className="mt-1 text-sm text-ink-faint">{prettyDateLong(today)}</p>
+        </div>
+        <RangePicker
+          start={rangeStart}
+          end={rangeEnd}
+          onChange={(s, e) => {
+            setRangeStart(s);
+            setRangeEnd(e);
+          }}
+        />
       </header>
 
-      {/* Stat row — asymmetric: revenue card gets the accent */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      {/* One flat stat row — today on the left, the picked period on the right */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Occupancy tonight"
           value={data?.occupancy ?? 0}
@@ -187,8 +201,18 @@ export default function DashboardPage() {
           icon={<Tray size={20} weight="duotone" />}
         />
         <StatCard
-          label="Revenue this month"
-          value={data?.revenueMtd ?? 0}
+          label="Total guests"
+          value={period?.totalGuests ?? 0}
+          icon={<UsersThree size={20} weight="duotone" />}
+        />
+        <StatCard
+          label="Bookings — period"
+          value={period?.bookings ?? 0}
+          icon={<Bed size={20} weight="duotone" />}
+        />
+        <StatCard
+          label="Revenue — period"
+          value={period?.revenue ?? 0}
           icon={<CurrencyEur size={20} weight="duotone" />}
           accent
           isCurrency

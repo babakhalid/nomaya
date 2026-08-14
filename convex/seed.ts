@@ -861,3 +861,14 @@ export const resetSandboxChannelStatus = internalMutation({
     return `Reset ${fixed} channel(s) to sandbox status.`;
   },
 });
+
+// One-off: flag Breakfast as included-by-default for calendar recalculations.
+export const markBreakfastDefault = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const services = await ctx.db.query("services").collect();
+    const hits = services.filter((s) => s.name.toLowerCase().includes("breakfast"));
+    for (const s of hits) await ctx.db.patch(s._id, { includedByDefault: true });
+    return `Flagged ${hits.length} service(s): ${hits.map((s) => s.name).join(", ") || "none"}`;
+  },
+});

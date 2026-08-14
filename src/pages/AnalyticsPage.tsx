@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { format, subMonths } from "date-fns";
 import {
   Bar,
@@ -15,30 +15,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { DownloadSimple, Plus, Trash } from "@phosphor-icons/react";
+import { DownloadSimple } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
+import RangePicker from "../components/RangePicker";
 import {
   Button,
-  Field,
-  Input,
   SectionTitle,
-  Select,
   SkeletonRows,
 } from "../components/ui";
-import { downloadCsv, eur, isoToday, SOURCE_LABELS } from "../lib/format";
+import { downloadCsv, downloadTextFile, eur, isoToday, SOURCE_LABELS } from "../lib/format";
 
 const PALETTE = ["#0f5c63", "#2b8188", "#4a9fa4", "#7dc0c2", "#e8b04b", "#c05b4d", "#a3906f", "#57503f"];
 
 export default function AnalyticsPage() {
   const [start, setStart] = useState(format(subMonths(new Date(), 5), "yyyy-MM-01"));
   const [end, setEnd] = useState(isoToday());
-  const [showExpenseForm, setShowExpenseForm] = useState(false);
 
   const report = useQuery(api.analytics.report, { start, end });
   const exportData = useQuery(api.analytics.exportData, { start, end });
-  const expenses = useQuery(api.payments.expensesInRange, { start, end });
-  const recordExpense = useMutation(api.payments.recordExpense);
-  const removeExpense = useMutation(api.payments.removeExpense);
 
   return (
     <div>
@@ -49,24 +43,34 @@ export default function AnalyticsPage() {
             How the season is really going — and the numbers for the books.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="From">
-            <Input type="date" value={start} onChange={(e) => setStart(e.target.value)} />
-          </Field>
-          <Field label="To">
-            <Input type="date" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </Field>
-        </div>
       </header>
 
+      <div className="mb-6">
+        <RangePicker
+          start={start}
+          end={end}
+          onChange={(s, e) => {
+            setStart(s);
+            setEnd(e);
+          }}
+        />
+      </div>
+
       {/* KPI strip — no boxes, just dividers */}
-      <div className="grid grid-cols-2 gap-y-5 rounded-xl2 border border-sand-200 bg-white py-5 md:grid-cols-5 md:divide-x md:divide-sand-200" style={{ boxShadow: "var(--shadow-diffuse)" }}>
+      <div className="grid grid-cols-2 gap-y-5 rounded-xl2 border border-sand-200 bg-white py-5 md:grid-cols-4 md:divide-x md:divide-sand-200 xl:grid-cols-7" style={{ boxShadow: "var(--shadow-diffuse)" }}>
         {[
           { label: "Bookings", value: report ? String(report.totalBookings) : "…" },
           { label: "Nights sold", value: report ? String(report.totalNights) : "…" },
+          { label: "New guests", value: report ? String(report.newGuests) : "…" },
+          { label: "Total guests", value: report ? String(report.totalGuests) : "…" },
           { label: "ADR", value: report ? eur(report.adr) : "…" },
           { label: "Revenue", value: report ? eur(report.totalRevenue) : "…" },
-          { label: "Expenses", value: report ? eur(report.totalExpenses) : "…" },
+          {
+            label: "Expenses (fixed · variable)",
+            value: report
+              ? `${eur(report.fixedExpenses)} · ${eur(report.variableExpenses)}`
+              : "…",
+          },
         ].map((kpi) => (
           <div key={kpi.label} className="px-6">
             <p className="text-xs font-medium text-ink-faint">{kpi.label}</p>
@@ -79,6 +83,15 @@ export default function AnalyticsPage() {
       <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-[2fr_1fr]">
         <div>
           <SectionTitle>Revenue vs expenses</SectionTitle>
+          {report && (
+            <p className="mb-3 text-sm text-ink-soft">
+              <span className="font-bold">Payroll {eur(report.payrollExpenses)}</span>
+              <span className="text-ink-faint"> · </span>
+              Other fixed {eur(report.otherFixedExpenses)}
+              <span className="text-ink-faint"> · </span>
+              Variable {eur(report.variableExpenses)}
+            </p>
+          )}
           <div className="rounded-xl2 border border-sand-200 bg-white p-5" style={{ boxShadow: "var(--shadow-diffuse)" }}>
             {report === undefined ? (
               <SkeletonRows count={4} />
@@ -248,95 +261,100 @@ export default function AnalyticsPage() {
           >
             <DownloadSimple size={16} weight="bold" /> Expenses CSV
           </Button>
-        </div>
-      </div>
-
-      {/* Expenses ledger */}
-      <div className="mt-12">
-        <SectionTitle
-          right={
-            <Button size="sm" variant="secondary" onClick={() => setShowExpenseForm((s) => !s)}>
-              <Plus size={14} weight="bold" /> Add expense
-            </Button>
-          }
-        >
-          Expense ledger
-        </SectionTitle>
-
-        {showExpenseForm && (
-          <form
-            className="mb-4 grid grid-cols-1 items-end gap-3 rounded-xl2 border border-sand-200 bg-white p-4 md:grid-cols-[1fr_1fr_2fr_1fr_auto]"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              const form = new FormData(e.currentTarget);
-              await recordExpense({
-                category: form.get("category") as "food" | "staff" | "equipment" | "maintenance" | "transport" | "utilities" | "other",
-                amount: Number(form.get("amount")),
-                date: String(form.get("date")),
-                description: String(form.get("description")),
-              });
-              setShowExpenseForm(false);
+          <Button
+            disabled={!exportData || !report}
+            onClick={() => {
+              if (!exportData || !report) return;
+              downloadTextFile(
+                `full_report_${start}_${end}.csv`,
+                buildFullReport(start, end, report, exportData),
+              );
             }}
           >
-            <Field label="Category">
-              <Select name="category" defaultValue="food">
-                {["food", "staff", "equipment", "maintenance", "transport", "utilities", "other"].map((c) => (
-                  <option key={c} value={c} className="capitalize">{c}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Amount (EUR)">
-              <Input name="amount" type="number" step="0.01" min="0.01" required />
-            </Field>
-            <Field label="Description">
-              <Input name="description" required placeholder="What was it for?" />
-            </Field>
-            <Field label="Date">
-              <Input name="date" type="date" defaultValue={isoToday()} required />
-            </Field>
-            <Button type="submit">Save</Button>
-          </form>
-        )}
-
-        <div className="overflow-x-auto rounded-xl2 border border-sand-200 bg-white" style={{ boxShadow: "var(--shadow-diffuse)" }}>
-          {expenses === undefined ? (
-            <div className="p-4"><SkeletonRows count={3} /></div>
-          ) : expenses.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-ink-faint">No expenses in this range.</p>
-          ) : (
-            <table className="w-full min-w-[520px] text-sm">
-              <thead>
-                <tr className="border-b border-sand-200 text-left text-xs uppercase tracking-wide text-ink-faint">
-                  <th className="px-5 py-3 font-semibold">Date</th>
-                  <th className="px-5 py-3 font-semibold">Category</th>
-                  <th className="px-5 py-3 font-semibold">Description</th>
-                  <th className="px-5 py-3 text-right font-semibold">Amount</th>
-                  <th className="w-10" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-sand-100">
-                {expenses.map((expense) => (
-                  <tr key={expense._id}>
-                    <td className="num px-5 py-3">{expense.date}</td>
-                    <td className="px-5 py-3 capitalize">{expense.category}</td>
-                    <td className="px-5 py-3 text-ink-soft">{expense.description}</td>
-                    <td className="num px-5 py-3 text-right font-semibold">{eur(expense.amount)}</td>
-                    <td className="px-3 py-3">
-                      <button
-                        onClick={() => void removeExpense({ expenseId: expense._id })}
-                        className="text-ink-faint transition-colors hover:text-coral cursor-pointer"
-                        title="Delete"
-                      >
-                        <Trash size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+            <DownloadSimple size={16} weight="bold" /> Full report (everything)
+          </Button>
         </div>
+        <p className="mt-2 text-xs text-ink-faint">
+          The full report bundles the summary, monthly breakdown, every payment and
+          every expense (fixed & variable) for the selected period in one file.
+        </p>
       </div>
+
     </div>
   );
+}
+
+
+// One CSV with everything — opens as a clean multi-section sheet in Excel.
+function buildFullReport(
+  start: string,
+  end: string,
+  report: {
+    totalBookings: number;
+    totalNights: number;
+    totalGuests: number;
+    newGuests: number;
+    adr: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    fixedExpenses: number;
+    variableExpenses: number;
+    payrollExpenses: number;
+    otherFixedExpenses: number;
+    monthly: { month: string; occupancy: number; revenue: number; expenses: number }[];
+  },
+  data: {
+    bookings: Record<string, unknown>[];
+    payments: Record<string, unknown>[];
+    expenses: Record<string, unknown>[];
+  },
+) {
+  const esc = (v: unknown) => {
+    const str = String(v ?? "");
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const table = (rows: Record<string, unknown>[]) => {
+    if (rows.length === 0) return "(none)\n";
+    const keys = Object.keys(rows[0]);
+    return [
+      keys.join(","),
+      ...rows.map((r) => keys.map((k) => esc(r[k])).join(",")),
+    ].join("\n") + "\n";
+  };
+  const net = Math.round((report.totalRevenue - report.totalExpenses) * 100) / 100;
+  return [
+    `FULL REPORT,${start} to ${end}`,
+    "",
+    "SUMMARY",
+    "metric,value",
+    `Revenue,${report.totalRevenue}`,
+    `Expenses (total),${report.totalExpenses}`,
+    `Expenses (fixed),${report.fixedExpenses}`,
+    `— of which payroll,${report.payrollExpenses}`,
+    `— other fixed,${report.otherFixedExpenses}`,
+    `Expenses (variable),${report.variableExpenses}`,
+    `Net result,${net}`,
+    `Bookings,${report.totalBookings}`,
+    `Nights sold,${report.totalNights}`,
+    `ADR,${report.adr}`,
+    `New guests,${report.newGuests}`,
+    `Total guests (all time),${report.totalGuests}`,
+    "",
+    "MONTHLY BREAKDOWN",
+    "month,occupancy %,revenue,expenses,net",
+    ...report.monthly.map(
+      (m) =>
+        `${m.month},${m.occupancy},${m.revenue},${m.expenses},${Math.round((m.revenue - m.expenses) * 100) / 100}`,
+    ),
+    "",
+    "REVENUE DETAIL — PAYMENTS",
+    table(data.payments).trimEnd(),
+    "",
+    "EXPENSES DETAIL",
+    table(data.expenses).trimEnd(),
+    "",
+    "BOOKINGS IN PERIOD",
+    table(data.bookings).trimEnd(),
+    "",
+  ].join("\n");
 }

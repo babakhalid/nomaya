@@ -406,6 +406,26 @@ export default function GuestPortalPage() {
                 </optgroup>
               </Select>
             </Field>
+            {(() => {
+              const [kind, id] = pickerValue.split("|");
+              const item =
+                kind === "activity"
+                  ? stay.catalog.activities.find((a) => a._id === id)
+                  : stay.catalog.services.find((sv) => sv._id === id);
+              return item?.imageUrl ? (
+                <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-sand-200 bg-sand-50 p-2">
+                  <img
+                    src={item.imageUrl}
+                    alt=""
+                    className="h-16 w-24 shrink-0 rounded-lg object-cover"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{item.name}</p>
+                    <p className="num text-xs text-ink-faint">{eur(item.price)}</p>
+                  </div>
+                </div>
+              ) : null;
+            })()}
             <div className="grid grid-cols-2 gap-4">
               <Field label="How many / people">
                 <Input

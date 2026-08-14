@@ -508,6 +508,7 @@ function ServicesTab() {
               unit: form.get("unit") as "per_stay" | "per_day" | "per_unit",
               active: form.get("active") === "on",
               startTime: String(form.get("startTime")) || undefined,
+              includedByDefault: form.get("includedByDefault") === "on",
             });
             setEditing(null);
           }}
@@ -530,6 +531,14 @@ function ServicesTab() {
             <input type="checkbox" name="active" defaultChecked={editingItem?.active ?? true} />
             Active (bookable)
           </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="includedByDefault"
+              defaultChecked={editingItem?.includedByDefault ?? false}
+            />
+            Included by default (auto-added when a stay is recalculated, e.g. breakfast)
+          </label>
           <Button type="submit">{editingItem ? "Save" : "Create"}</Button>
         </form>
       </Drawer>
@@ -543,15 +552,56 @@ function PackagesTab() {
   const packages = useQuery(api.catalog.listPackages);
   const activities = useQuery(api.catalog.listActivities);
   const services = useQuery(api.catalog.listServices);
+  const roomTypes = useQuery(api.inventory.listRoomTypes);
   const upsert = useMutation(api.catalog.upsertPackage);
+  const generateUploadUrl = useMutation(api.inventory.generateUploadUrl);
+  const setPackagePhoto = useMutation(api.catalog.setPackagePhoto);
   const [editing, setEditing] = useState<"new" | Id<"packages"> | null>(null);
   const [items, setItems] = useState<{ kind: "activity" | "service"; refId: string; qty: number }[]>([]);
+  const [rtPrices, setRtPrices] = useState<Record<string, string>>({});
+  const [uploadingPkg, setUploadingPkg] = useState(false);
+  const [pkgUploadError, setPkgUploadError] = useState<string | null>(null);
   const editingItem = packages?.find((p) => p._id === editing);
 
   function openEditor(target: "new" | Id<"packages">) {
     const pkg = packages?.find((p) => p._id === target);
     setItems(pkg?.includedItems ?? []);
+    setRtPrices(
+      Object.fromEntries(
+        (pkg?.roomTypePrices ?? []).map((r) => [r.roomTypeId, String(r.price)]),
+      ),
+    );
+    setPkgUploadError(null);
     setEditing(target);
+  }
+
+  async function handlePackagePhoto(file: File) {
+    if (!editingItem) return;
+    setPkgUploadError(null);
+    if (!file.type.startsWith("image/")) {
+      setPkgUploadError("Please choose an image file.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setPkgUploadError("Image too large — keep it under 8 MB.");
+      return;
+    }
+    setUploadingPkg(true);
+    try {
+      const uploadUrl = await generateUploadUrl();
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const { storageId } = await response.json();
+      await setPackagePhoto({ packageId: editingItem._id, storageId });
+    } catch {
+      setPkgUploadError("Upload failed — try again.");
+    } finally {
+      setUploadingPkg(false);
+    }
   }
 
   const nameOf = (item: { kind: string; refId: string }) =>
@@ -571,18 +621,38 @@ function PackagesTab() {
           <SkeletonRows count={2} />
         ) : (
           packages.map((pkg) => (
-            <div key={pkg._id} className="rounded-xl2 border border-sand-200 bg-white p-5" style={{ boxShadow: "var(--shadow-diffuse)" }}>
+            <div key={pkg._id} className="overflow-hidden rounded-xl2 border border-sand-200 bg-white" style={{ boxShadow: "var(--shadow-diffuse)" }}>
+              {pkg.photoUrl && (
+                <img src={pkg.photoUrl} alt="" className="h-32 w-full object-cover" loading="lazy" />
+              )}
+              <div className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-bold">{pkg.name}</p>
-                  <p className="mt-0.5 text-sm text-ink-faint">{pkg.description}</p>
+                  <p className="mt-0.5 line-clamp-2 text-sm text-ink-faint">{pkg.description}</p>
                 </div>
                 <p className="num shrink-0 text-lg font-bold text-ocean-700">{eur(pkg.price)}</p>
               </div>
               <ul className="mt-3 flex flex-wrap gap-1.5">
-                <li className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium">
-                  {pkg.nights} nights
-                </li>
+                {!pkg.roomTypePrices?.length && (
+                  <li className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium">
+                    {pkg.nights} nights
+                  </li>
+                )}
+                {(pkg.roomTypePrices ?? []).map((r) => (
+                  <li
+                    key={r.roomTypeId}
+                    className="num rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-medium"
+                  >
+                    {roomTypes?.find((rt) => rt._id === r.roomTypeId)?.name ?? "?"} ·{" "}
+                    {eur(r.price)}/p/w
+                  </li>
+                ))}
+                {pkg.minGuests ? (
+                  <li className="rounded-full bg-dune/15 px-2.5 py-0.5 text-xs font-medium text-[#8a6420]">
+                    min {pkg.minGuests} guests
+                  </li>
+                ) : null}
                 {pkg.includedItems.map((item, i) => (
                   <li key={i} className="rounded-full bg-ocean-50 px-2.5 py-0.5 text-xs font-medium text-ocean-800">
                     {item.qty}× {nameOf(item)}
@@ -592,6 +662,7 @@ function PackagesTab() {
               <div className="mt-4 flex items-center justify-between">
                 {!pkg.active ? <Badge>Inactive</Badge> : <span />}
                 <Button size="sm" variant="secondary" onClick={() => openEditor(pkg._id)}>Edit</Button>
+              </div>
               </div>
             </div>
           ))
@@ -616,6 +687,13 @@ function PackagesTab() {
               nights: Number(form.get("nights")),
               includedItems: items,
               active: form.get("active") === "on",
+              minGuests: Number(form.get("minGuests")) || undefined,
+              roomTypePrices: Object.entries(rtPrices)
+                .filter(([, val]) => val.trim() !== "" && Number(val) > 0)
+                .map(([roomTypeId, val]) => ({
+                  roomTypeId: roomTypeId as Id<"roomTypes">,
+                  price: Number(val),
+                })),
             });
             setEditing(null);
           }}
@@ -623,9 +701,87 @@ function PackagesTab() {
           <Field label="Name"><Input name="name" defaultValue={editingItem?.name} required /></Field>
           <Field label="Description"><Textarea name="description" defaultValue={editingItem?.description} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Price"><Input name="price" type="number" min={0} step="0.01" defaultValue={editingItem?.price} required /></Field>
-            <Field label="Nights"><Input name="nights" type="number" min={1} defaultValue={editingItem?.nights ?? 7} /></Field>
+            <Field label='"From" price (shown on the card)'><Input name="price" type="number" min={0} step="0.01" defaultValue={editingItem?.price} required /></Field>
+            <Field label="Nights (flat packs only)"><Input name="nights" type="number" min={1} defaultValue={editingItem?.nights ?? 7} /></Field>
           </div>
+          <Field label="Minimum guests (optional)">
+            <Input name="minGuests" type="number" min={1} defaultValue={editingItem?.minGuests} placeholder="—" />
+          </Field>
+
+          <div>
+            <p className="mb-1 text-[13px] font-medium text-ink-soft">
+              Per-person price / week by room type
+            </p>
+            <p className="mb-2 text-xs text-ink-faint">
+              Leave blank where the formule isn't offered. If every field is blank, the
+              pack uses the flat price above for its exact night count.
+            </p>
+            <div className="flex flex-col divide-y divide-sand-100 rounded-xl border border-sand-200 bg-white px-3">
+              {roomTypes === undefined ? (
+                <p className="py-3 text-sm text-ink-faint">Loading room types…</p>
+              ) : (
+                roomTypes.map((rt) => (
+                  <div key={rt._id} className="flex items-center gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold leading-snug">{rt.name}</p>
+                      <p className="text-xs text-ink-faint">
+                        sleeps {rt.capacity}
+                        {rt.mode === "dorm" ? " · dorm" : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="—"
+                        value={rtPrices[rt._id] ?? ""}
+                        onChange={(e) =>
+                          setRtPrices((prev) => ({ ...prev, [rt._id]: e.target.value }))
+                        }
+                        className="w-24 text-right"
+                      />
+                      <span className="text-xs text-ink-faint">€/p/w</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {editingItem ? (
+            <div>
+              <p className="mb-2 text-[13px] font-medium text-ink-soft">Photo</p>
+              {editingItem.photoUrl && (
+                <img
+                  src={editingItem.photoUrl}
+                  alt=""
+                  className="mb-2 h-32 w-full rounded-xl object-cover"
+                />
+              )}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-sand-300 bg-white px-3.5 py-2 text-sm font-semibold text-ink-soft transition-colors hover:bg-sand-100">
+                {uploadingPkg ? "Uploading…" : "Upload new photo"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingPkg}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handlePackagePhoto(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {pkgUploadError && (
+                <p className="mt-1.5 text-xs text-coral">{pkgUploadError}</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-ink-faint">
+              Save the package first, then reopen it to add a photo.
+            </p>
+          )}
 
           <div>
             <p className="mb-2 text-[13px] font-medium text-ink-soft">Included items</p>
@@ -672,9 +828,14 @@ function AddItemRow({
 }) {
   const [value, setValue] = useState("");
   const [qty, setQty] = useState(1);
+  const picked = value
+    ? value.startsWith("activity|")
+      ? activities.find((a) => `activity|${a._id}` === value)
+      : services.find((s) => `service|${s._id}` === value)
+    : undefined;
   return (
-    <div className="flex items-center gap-2">
-      <Select value={value} onChange={(e) => setValue(e.target.value)} className="flex-1">
+    <div className="flex flex-col gap-2">
+      <Select value={value} onChange={(e) => setValue(e.target.value)}>
         <option value="">Pick an item…</option>
         <optgroup label="Activities">
           {activities.map((a) => (
@@ -687,6 +848,10 @@ function AddItemRow({
           ))}
         </optgroup>
       </Select>
+      <div className="flex items-center gap-2">
+      <span className="min-w-0 flex-1 truncate text-sm text-ink-soft">
+        {picked ? picked.name : "Nothing selected"}
+      </span>
       <Input
         type="number"
         min={1}
@@ -708,6 +873,7 @@ function AddItemRow({
       >
         Add
       </Button>
+      </div>
     </div>
   );
 }

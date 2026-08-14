@@ -171,6 +171,7 @@ export const stay = query({
             durationMin: a.durationMin,
             type: a.type,
             startTime: a.startTime,
+            imageUrl: a.imageUrl,
           })),
         services: services
           .filter((s) => s.active)
@@ -181,6 +182,7 @@ export const stay = query({
             price: s.price,
             unit: s.unit,
             startTime: s.startTime,
+            imageUrl: s.imageUrl,
           })),
       },
       booked: myActivities.map((a) => ({

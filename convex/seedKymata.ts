@@ -352,3 +352,43 @@ export const setRealRooms = internalMutation({
     return "8 real rooms created (AZURA…TIMOULAY, 21 guests) with rebuilt demo bookings.";
   },
 });
+
+// Convert the 4 tier-named per-person packages into 2 formules with
+// per-room-type weekly rates (the new pricing model). Idempotent.
+export const toFormules = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const packages = await ctx.db.query("packages").collect();
+    if (packages.some((p) => p.active && p.roomTypePrices)) {
+      return "Formules already in place — skipping.";
+    }
+    const roomTypes = await ctx.db.query("roomTypes").collect();
+    const sharedTier = roomTypes.filter((t) => /Triple|Quadruple/i.test(t.name));
+    const doubleTier = roomTypes.filter((t) => /Double|Twin/i.test(t.name));
+
+    const defs = [
+      { name: "Surf Lessons", source: "Surf Lessons · Shared Triple", shared: 490, dbl: 550 },
+      { name: "Surf x Yoga", source: "Surf x Yoga · Shared Triple", shared: 525, dbl: 595 },
+    ];
+    for (const def of defs) {
+      const src = packages.find((p) => p.name === def.source);
+      await ctx.db.insert("packages", {
+        name: def.name,
+        description: src?.description,
+        price: def.shared,
+        nights: 7,
+        includedItems: src?.includedItems ?? [],
+        active: true,
+        minGuests: undefined,
+        roomTypePrices: [
+          ...sharedTier.map((t) => ({ roomTypeId: t._id, price: def.shared })),
+          ...doubleTier.map((t) => ({ roomTypeId: t._id, price: def.dbl })),
+        ],
+      });
+    }
+    for (const p of packages) {
+      if (p.active) await ctx.db.patch(p._id, { active: false });
+    }
+    return `Created 2 formules (${sharedTier.length} shared-tier + ${doubleTier.length} double-tier room types); deactivated ${packages.length} old packages.`;
+  },
+});

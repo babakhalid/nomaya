@@ -76,6 +76,8 @@ export default function BookPage() {
   // selection
   const [roomIds, setRoomIds] = useState<Id<"rooms">[]>([]);
   const [packageId, setPackageId] = useState<string>("");
+  // BookingLayer-style step 1: pick a formule (or room-only) before the wizard.
+  const [formuleChosen, setFormuleChosen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Record<string, number>>({});
 
   // payment / confirmation
@@ -96,6 +98,7 @@ export default function BookPage() {
     end: format(addDays(new Date(), CAL_WINDOW_DAYS), "yyyy-MM-dd"),
   });
   const createRequest = useMutation(api.publicBooking.createRequest);
+  const catalog = useQuery(api.publicBooking.listPackages, {});
 
   useGSAP(
     () => {
@@ -105,7 +108,7 @@ export default function BookPage() {
         { opacity: 1, y: 0, duration: 0.45, ease: "expo.out", stagger: 0.06 },
       );
     },
-    { scope, dependencies: [totalGuests > 0, datesValid, roomIds.length, finished] },
+    { scope, dependencies: [formuleChosen, totalGuests > 0, datesValid, roomIds.length, finished] },
   );
 
   // keep companions array sized to guests − 1
@@ -119,30 +122,107 @@ export default function BookPage() {
   }
 
   const selectedRooms = (availability?.rooms ?? []).filter((r) => roomIds.includes(r.roomId));
+  // Selection order matters: guests fill rooms in the order they were picked,
+  // mirroring the backend's distribution (and therefore its pricing).
+  const orderedRooms = roomIds
+    .map((id) => availability?.rooms.find((r) => r.roomId === id))
+    .filter((r) => r !== undefined);
   const selectedRoom = selectedRooms[0];
   const selectedCapacity = selectedRooms.reduce(
     (n, r) => n + (r.mode === "dorm" ? 1 : r.capacity),
     0,
   );
   const selectedPackage = availability?.packages.find((p) => p.packageId === packageId);
+  const chosenFormule = catalog?.packages.find((p) => p.packageId === packageId);
+  const isFormule = !!selectedPackage?.roomTypePrices;
+  const formuleRate = (roomTypeId: string) =>
+    selectedPackage?.roomTypePrices?.find((r) => r.roomTypeId === roomTypeId)?.price;
+  const nightsCount = availability?.nights ?? 0;
+  const occupantsByRoom = (() => {
+    let left = totalGuests;
+    return orderedRooms.map((r) => {
+      const cap = r.mode === "dorm" ? 1 : r.capacity;
+      const here = Math.min(left, cap);
+      left -= here;
+      return here;
+    });
+  })();
   const servicesTotal = Object.entries(selectedServices).reduce((sum, [id, qty]) => {
     const service = availability?.services.find((s) => s.serviceId === id);
     return sum + (service ? service.price * qty : 0);
   }, 0);
-  const roomsTotal = selectedRooms.reduce((sum, r) => sum + r.totalForStay, 0);
-  // Kymata packages are priced per person, single-room stays only
-  const stayTotal =
-    selectedPackage && selectedRooms.length === 1
-      ? selectedPackage.price * Math.max(1, totalGuests)
-      : roomsTotal;
-  const total = stayTotal + servicesTotal;
+  const stayLines: { key: string; name: string; detail: string; amount: number }[] =
+    orderedRooms.length > 0
+      ? isFormule
+        ? orderedRooms.map((r, i) => {
+            const rate = formuleRate(r.roomTypeId) ?? 0;
+            return {
+              key: r.roomId,
+              name: r.name,
+              detail: `${occupantsByRoom[i]} × ${eur(rate)} / person / week`,
+              amount: Math.round(occupantsByRoom[i] * (rate / 7) * nightsCount * 100) / 100,
+            };
+          })
+        : selectedPackage && orderedRooms.length === 1
+          ? [
+              {
+                key: orderedRooms[0].roomId,
+                name: selectedPackage.name,
+                detail: `All-inclusive · staying in ${orderedRooms[0].name}`,
+                amount: selectedPackage.price,
+              },
+            ]
+          : orderedRooms.map((r) => ({
+              key: r.roomId,
+              name: r.name,
+              detail: `${eur(r.pricePerNight)} × ${nightsCount || "…"} nights`,
+              amount: r.totalForStay,
+            }))
+      : chosenFormule
+        ? [
+            // No room picked yet — count the formule from its lowest rate so
+            // the running total reflects the pack right after selection.
+            chosenFormule.perPerson
+              ? {
+                  key: "formule-estimate",
+                  name: chosenFormule.name,
+                  detail: `from ${eur(chosenFormule.price)} / person / week × ${Math.max(1, totalGuests)}${
+                    nightsCount ? ` · ${nightsCount} nights` : ""
+                  } (pick a room to finalise)`,
+                  amount:
+                    Math.round(
+                      Math.max(1, totalGuests) *
+                        chosenFormule.price *
+                        (nightsCount ? nightsCount / 7 : 1) *
+                        100,
+                    ) / 100,
+                }
+              : {
+                  key: "formule-estimate",
+                  name: chosenFormule.name,
+                  detail: "Package (pick a room to finalise)",
+                  amount: chosenFormule.price,
+                },
+          ]
+        : [];
+  const stayTotal = Math.round(stayLines.reduce((sum, l) => sum + l.amount, 0) * 100) / 100;
+  const total = Math.round((stayTotal + servicesTotal) * 100) / 100;
 
   function toggleRoom(id: Id<"rooms">) {
     setRoomIds((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-      if (next.length !== 1) setPackageId("");
+      // A flat package only fits a single room; formules survive multi-room.
+      if (next.length !== 1 && selectedPackage && !selectedPackage.roomTypePrices)
+        setPackageId("");
       return next;
     });
+  }
+
+  function pickFormule(id: string) {
+    setPackageId(id);
+    setFormuleChosen(true);
+    if (totalGuests === 0) setGuestsOpen(true);
+    window.scrollTo({ top: 0 });
   }
 
   const leadValid = lead.fullName.trim().length >= 2 && EMAIL_RE.test(lead.email);
@@ -153,8 +233,19 @@ export default function BookPage() {
     (selectedRooms.some((r) => r.mode === "dorm")
       ? selectedRooms.length === 1 && totalGuests === 1
       : totalGuests <= selectedCapacity);
+  const minGuestsNeeded = selectedPackage?.minGuests ?? 0;
+  const formuleOk =
+    !isFormule ||
+    (selectedRooms.every((r) => formuleRate(r.roomTypeId) !== undefined) &&
+      totalGuests >= minGuestsNeeded);
   const canPay =
-    totalGuests > 0 && leadValid && companionsValid && datesValid && roomFits && !submitting;
+    totalGuests > 0 &&
+    leadValid &&
+    companionsValid &&
+    datesValid &&
+    roomFits &&
+    formuleOk &&
+    !submitting;
 
   const missing = !canPay
     ? totalGuests === 0
@@ -169,7 +260,11 @@ export default function BookPage() {
               ? "Choose a room"
               : !roomFits
                 ? `Selected rooms sleep ${selectedCapacity} — add another room for ${totalGuests} guests`
-                : ""
+                : !formuleOk
+                  ? totalGuests < minGuestsNeeded
+                    ? `${selectedPackage?.name} needs at least ${minGuestsNeeded} guests`
+                    : "One of the selected rooms isn't offered in this formule"
+                  : ""
     : "";
 
   async function handleContinue() {
@@ -256,20 +351,109 @@ export default function BookPage() {
     );
   }
 
+  // ── Step 1: formules landing (BookingLayer style) ────────────────────
+  if (!formuleChosen && !confirmation) {
+    return (
+      <div ref={scope} className="min-h-[100dvh] bg-sand-50">
+        <div className="bg-ocean-900 px-4 pb-16 pt-6 text-sand-50 sm:px-6">
+          <div className="mx-auto max-w-5xl">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90">
+                <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
+              </span>
+              <div>
+                <p className="font-black tracking-tight">Kymata Surf Morocco</p>
+                <p className="text-xs text-ocean-200">
+                  Book your stay · no charge until confirmed
+                </p>
+              </div>
+            </div>
+            <h1 className="flow-in mt-10 text-3xl font-black tracking-tighter sm:text-4xl">
+              Les formules
+            </h1>
+            <p className="flow-in mt-2 max-w-xl text-ocean-200">
+              Pick the trip that fits — stay, surf and yoga included — or book a
+              room only. You'll choose guests and dates next.
+            </p>
+          </div>
+        </div>
+        <div className="mx-auto -mt-8 max-w-5xl px-4 pb-20 sm:px-6">
+          {catalog === undefined ? (
+            <SkeletonRows count={3} />
+          ) : (
+            <div className="grid gap-5 sm:grid-cols-2">
+              {catalog.packages.map((pkg) => (
+                <FormuleCard
+                  key={pkg.packageId}
+                  title={pkg.name}
+                  description={pkg.description}
+                  priceLabel={
+                    pkg.perPerson
+                      ? `from ${eur(pkg.price)} / person / week`
+                      : `${eur(pkg.price)} / stay`
+                  }
+                  note={
+                    pkg.minGuests && pkg.minGuests > 1
+                      ? `Minimum ${pkg.minGuests} surfers`
+                      : undefined
+                  }
+                  imageUrl={pkg.imageUrl}
+                  onPick={() => pickFormule(pkg.packageId)}
+                />
+              ))}
+              <FormuleCard
+                title="Bed & Breakfast"
+                description="For those looking for more flexibility and freedom. Enjoy the surf-house vibe and shape your own days in the region — room and breakfast, everything else à la carte."
+                priceLabel={`from ${eur(catalog.roomOnlyFrom)} / night`}
+                imageUrl={undefined}
+                onPick={() => pickFormule("")}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={scope} className="min-h-[100dvh] bg-sand-50 pb-28 lg:pb-16">
       {/* Brand bar */}
       <div className="bg-ocean-900 px-4 py-4 text-sand-50 sm:px-6">
-        <div className="mx-auto flex max-w-5xl items-center gap-3">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
           <Link
             to="/"
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 p-1.5"
           >
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="font-black tracking-tight">Kymata Surf Morocco</p>
             <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
+          </div>
+          {/* Selected formule */}
+          <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 py-1.5 pl-1.5 pr-4">
+            {chosenFormule?.imageUrl && (
+              <img
+                src={chosenFormule.imageUrl}
+                alt=""
+                className="h-10 w-14 rounded-lg object-cover"
+              />
+            )}
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wide text-ocean-300">Formule</p>
+              <p className="truncate text-sm font-bold leading-tight">
+                {chosenFormule?.name ?? "Bed & Breakfast"}
+              </p>
+            </div>
+            {!confirmation && (
+              <button
+                type="button"
+                onClick={() => setFormuleChosen(false)}
+                className="ml-1 text-xs font-semibold text-ocean-200 underline hover:text-sand-50 cursor-pointer"
+              >
+                change
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -504,8 +688,11 @@ export default function BookPage() {
                         const dormBlocked =
                           room.mode === "dorm" && (totalGuests > 1 || roomIds.length > 0);
                         const soldOut = !room.available;
-                        const disabled = soldOut || dormBlocked;
+                        const rate = isFormule ? formuleRate(room.roomTypeId) : undefined;
+                        const notInFormule = isFormule && rate === undefined;
                         const selected = roomIds.includes(room.roomId);
+                        // Always allow deselecting, even if the room no longer fits.
+                        const disabled = (soldOut || dormBlocked || notInFormule) && !selected;
                         return (
                           <button
                             key={room.roomId}
@@ -530,8 +717,12 @@ export default function BookPage() {
                                   className="h-40 w-full object-cover"
                                 />
                                 {disabled && (
-                                  <span className="absolute inset-0 flex items-center justify-center bg-ink/45 text-sm font-bold text-sand-50">
-                                    {soldOut ? "Booked for these dates" : "Dorm beds: one guest per request"}
+                                  <span className="absolute inset-0 flex items-center justify-center bg-ink/45 px-4 text-center text-sm font-bold text-sand-50">
+                                    {soldOut
+                                      ? "Booked for these dates"
+                                      : notInFormule
+                                        ? "Not offered in this formule"
+                                        : "Dorm beds: one guest per request"}
                                   </span>
                                 )}
                                 {selected && (
@@ -554,10 +745,21 @@ export default function BookPage() {
                                 </p>
                               </div>
                               <div className="shrink-0 text-right">
-                                <p className="num text-lg font-bold text-ocean-700">
-                                  {eur(room.pricePerNight)}
-                                </p>
-                                <p className="text-[11px] text-ink-faint">/night</p>
+                                {isFormule && rate !== undefined ? (
+                                  <>
+                                    <p className="num text-lg font-bold text-ocean-700">
+                                      {eur(rate)}
+                                    </p>
+                                    <p className="text-[11px] text-ink-faint">/person/week</p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="num text-lg font-bold text-ocean-700">
+                                      {eur(room.pricePerNight)}
+                                    </p>
+                                    <p className="text-[11px] text-ink-faint">/night</p>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </button>
@@ -571,61 +773,28 @@ export default function BookPage() {
               {/* Packages + extras */}
               {selectedRoom && availability && (
                 <section className="flow-in mt-10 flex flex-col gap-8">
-                  {selectedRooms.length > 1 && availability.packages.length > 0 && (
-                    <p className="rounded-xl bg-sand-100 px-4 py-3 text-sm text-ink-soft">
-                      Packages apply to single-room stays — for your group, add surf
-                      lessons and extras à la carte below.
-                    </p>
-                  )}
-                  {selectedRooms.length === 1 && availability.packages.length > 0 && (
-                    <div>
-                      <h2 className="mb-1 font-bold tracking-tight">Make it a surf week?</h2>
-                      <p className="mb-3 text-sm text-ink-faint">
-                        Packages sized exactly for your {availability.nights}-night stay.
+                  <div className="flex items-center justify-between gap-3 rounded-xl2 border border-sand-200 bg-white px-4 py-3.5">
+                    <div className="min-w-0">
+                      <p className="text-[11px] uppercase tracking-wide text-ink-faint">
+                        Your formule
                       </p>
-                      <div className="flex flex-col gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setPackageId("")}
-                          className={cx(
-                            "rounded-xl2 border bg-white p-4 text-left text-sm transition-all cursor-pointer",
-                            packageId === ""
-                              ? "border-ocean-500 shadow-[0_0_0_1px_var(--color-ocean-500)]"
-                              : "border-sand-200 hover:border-sand-300",
-                          )}
-                        >
-                          <span className="font-bold">Room only</span>
-                          <span className="text-ink-faint"> — add lessons and extras later</span>
-                        </button>
-                        {availability.packages.map((pkg) => (
-                          <button
-                            key={pkg.packageId}
-                            type="button"
-                            onClick={() => setPackageId(pkg.packageId)}
-                            className={cx(
-                              "rounded-xl2 border bg-white p-4 text-left transition-all cursor-pointer",
-                              packageId === pkg.packageId
-                                ? "border-ocean-500 shadow-[0_0_0_1px_var(--color-ocean-500)]"
-                                : "border-sand-200 hover:border-sand-300",
-                            )}
-                          >
-                            <div className="flex items-center justify-between gap-4">
-                              <div>
-                                <p className="text-sm font-bold">{pkg.name}</p>
-                                <p className="mt-0.5 text-xs text-ink-faint">{pkg.description}</p>
-                              </div>
-                              <p className="num shrink-0 text-right font-bold text-ocean-700">
-                                {eur(pkg.price)}
-                                <span className="block text-[10px] font-medium text-ink-faint">
-                                  / person / week
-                                </span>
-                              </p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                      <p className="truncate font-bold">
+                        {chosenFormule?.name ?? "Bed & Breakfast — room only"}
+                      </p>
+                      {minGuestsNeeded > 1 && totalGuests < minGuestsNeeded && (
+                        <p className="mt-0.5 text-xs font-semibold text-coral">
+                          This formule needs at least {minGuestsNeeded} guests.
+                        </p>
+                      )}
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setFormuleChosen(false)}
+                      className="shrink-0 text-sm font-semibold text-ocean-700 hover:underline cursor-pointer"
+                    >
+                      Change
+                    </button>
+                  </div>
 
                   {availability.services.length > 0 && (
                     <div>
@@ -663,6 +832,14 @@ export default function BookPage() {
                               >
                                 {active && <Check size={13} weight="bold" />}
                               </button>
+                              {service.imageUrl && (
+                                <img
+                                  src={service.imageUrl}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-11 w-14 shrink-0 rounded-lg object-cover"
+                                />
+                              )}
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold">{service.name}</p>
                                 <p className="text-xs text-ink-faint">
@@ -748,8 +925,8 @@ export default function BookPage() {
               checkIn={checkIn}
               checkOut={checkOut}
               nights={availability?.nights}
-              rooms={selectedRooms}
-              pkg={selectedPackage}
+              stayLines={stayLines}
+              formuleName={isFormule ? (chosenFormule?.name ?? selectedPackage?.name) : undefined}
               services={availability?.services ?? []}
               selectedServices={selectedServices}
               total={total}
@@ -1033,13 +1210,68 @@ function DatesPill({
 
 // ── Sticky summary ───────────────────────────────────────────────────────
 
+function FormuleCard({
+  title,
+  description,
+  priceLabel,
+  note,
+  imageUrl,
+  onPick,
+}: {
+  title: string;
+  description?: string;
+  priceLabel: string;
+  note?: string;
+  imageUrl?: string;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="flow-in group overflow-hidden rounded-xl2 border border-sand-200 bg-white text-left transition-all hover:-translate-y-0.5 hover:border-ocean-500 cursor-pointer"
+      style={{ boxShadow: "var(--shadow-lift)" }}
+    >
+      <div className="relative h-40 overflow-hidden bg-ocean-200">
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <img
+            src="/mascot.png"
+            alt=""
+            className="absolute right-5 top-5 h-20 w-20 object-contain opacity-25"
+          />
+        )}
+        <span className="absolute inset-x-0 bottom-0 bg-ocean-900/70 px-5 py-3 text-lg font-black tracking-tight text-sand-50 backdrop-blur-sm">
+          {title}
+        </span>
+      </div>
+      <div className="flex flex-col gap-2 p-5">
+        <p className="num text-sm font-bold text-ocean-700">{priceLabel}</p>
+        {description && (
+          <p className="line-clamp-3 text-sm leading-relaxed text-ink-soft">{description}</p>
+        )}
+        {note && <p className="text-xs font-semibold text-ink-faint">{note}</p>}
+        <span className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-ocean-800">
+          Book this <ArrowRight size={14} weight="bold" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
 function SummaryCard({
   guests,
   checkIn,
   checkOut,
   nights,
-  rooms,
-  pkg,
+  stayLines,
+  formuleName,
   services,
   selectedServices,
   total,
@@ -1048,8 +1280,8 @@ function SummaryCard({
   checkIn: string | null;
   checkOut: string | null;
   nights?: number;
-  rooms: { name: string; pricePerNight: number; totalForStay: number }[];
-  pkg?: { name: string; price: number };
+  stayLines: { key: string; name: string; detail: string; amount: number }[];
+  formuleName?: string;
   services: { serviceId: string; name: string; price: number }[];
   selectedServices: Record<string, number>;
   total: number;
@@ -1090,29 +1322,19 @@ function SummaryCard({
       </div>
 
       <div className="mt-4 flex flex-col gap-2 border-t border-sand-100 pt-4 text-sm">
-        {rooms.length === 1 && pkg ? (
-          <>
-            <div className="flex justify-between gap-3">
+        {formuleName && (
+          <p className="text-xs font-bold uppercase tracking-wide text-ocean-700">
+            {formuleName}
+          </p>
+        )}
+        {stayLines.length > 0 ? (
+          stayLines.map((line) => (
+            <div key={line.key} className="flex justify-between gap-3">
               <span className="font-semibold">
-                {pkg.name}
-                <span className="block text-xs font-normal text-ink-faint">
-                  {eur(pkg.price)} / person × {guests}
-                </span>
+                {line.name}
+                <span className="block text-xs font-normal text-ink-faint">{line.detail}</span>
               </span>
-              <span className="num font-semibold">{eur(pkg.price * Math.max(1, guests))}</span>
-            </div>
-            <p className="text-xs text-ink-faint">All-inclusive · staying in {rooms[0].name}</p>
-          </>
-        ) : rooms.length > 0 ? (
-          rooms.map((room) => (
-            <div key={room.name} className="flex justify-between gap-3">
-              <span className="font-semibold">
-                {room.name}
-                <span className="block text-xs font-normal text-ink-faint">
-                  {eur(room.pricePerNight)} × {nights ?? "…"} nights
-                </span>
-              </span>
-              <span className="num font-semibold">{eur(room.totalForStay)}</span>
+              <span className="num font-semibold">{eur(line.amount)}</span>
             </div>
           ))
         ) : (
