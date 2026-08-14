@@ -256,7 +256,7 @@ export const update = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, { bookingId, ...patch }) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const before = await ctx.db.get(bookingId);
     if (!before) throw new Error("Booking not found");
     const next = { ...before, ...patch };
@@ -532,7 +532,12 @@ export const remove = mutation({
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) return;
     const guest = await ctx.db.get(booking.guestId);
-    for (const table of ["bookingActivities", "bookingServices"] as const) {
+    for (const table of [
+      "bookingActivities",
+      "bookingServices",
+      "payments",
+      "guestRequests",
+    ] as const) {
       const rows = await ctx.db
         .query(table)
         .withIndex("by_booking", (q) => q.eq("bookingId", args.bookingId))
@@ -553,3 +558,186 @@ export const remove = mutation({
     });
   },
 });
+
+
+/** Delete a guest and every trace of their stays. Manager+ only. */
+export const removeGuest = mutation({
+  args: { guestId: v.id("guests") },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, "manager");
+    const guest = await ctx.db.get(args.guestId);
+    if (!guest) return;
+    const bookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_guest", (q) => q.eq("guestId", args.guestId))
+      .collect();
+    for (const booking of bookings) {
+      for (const table of [
+        "bookingActivities",
+        "bookingServices",
+        "payments",
+        "guestRequests",
+      ] as const) {
+        const rows = await ctx.db
+          .query(table)
+          .withIndex("by_booking", (q) => q.eq("bookingId", booking._id))
+          .collect();
+        for (const row of rows) await ctx.db.delete(row._id);
+      }
+      await ctx.db.delete(booking._id);
+    }
+    await ctx.db.delete(args.guestId);
+    if (bookings.length > 0) {
+      const start = bookings.reduce((a, b) => (b.checkIn < a ? b.checkIn : a), bookings[0].checkIn);
+      const end = bookings.reduce((a, b) => (b.checkOut > a ? b.checkOut : a), bookings[0].checkOut);
+      await ctx.scheduler.runAfter(0, internal.channex.pushAvailability, { start, end });
+    }
+    await logAudit(ctx, actor, {
+      action: "guest.delete",
+      entity: "guests",
+      entityId: args.guestId,
+      summary: `Deleted guest ${guest.fullName} (${bookings.length} bookings and their payments/requests)`,
+      before: guest,
+    });
+  },
+});
+
+/**
+ * Calendar drag: move or resize a stay. Recalculates the price for the new
+ * room/dates (formule per-person rates, flat package, or nightly), resyncs
+ * per-day service lines to the new night count, attaches default services
+ * (e.g. breakfast), and shifts activity dates when the whole stay moves.
+ */
+export const move = mutation({
+  args: {
+    bookingId: v.id("bookings"),
+    roomId: v.id("rooms"),
+    bedId: v.optional(v.id("beds")),
+    checkIn: v.string(),
+    checkOut: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, "manager");
+    const booking = await ctx.db.get(args.bookingId);
+    if (!booking) throw new Error("Booking not found");
+    if (args.checkIn >= args.checkOut) throw new Error("Check-out must be after check-in");
+    await assertSlotFree(ctx, args.roomId, args.bedId, args.checkIn, args.checkOut, args.bookingId);
+
+    const room = await ctx.db.get(args.roomId);
+    if (!room) throw new Error("Room not found");
+    const type = await ctx.db.get(room.roomTypeId);
+    if (!type) throw new Error("Room type not found");
+    const nights = Math.round(
+      (Date.parse(args.checkOut) - Date.parse(args.checkIn)) / 86400000,
+    );
+    const pax = booking.adults + booking.children;
+
+    // Stay price under the new room/dates
+    const pkg = booking.packageId ? await ctx.db.get(booking.packageId) : null;
+    let stay: number;
+    let dropPackage = false;
+    if (pkg?.roomTypePrices) {
+      const rate = pkg.roomTypePrices.find((r) => r.roomTypeId === room.roomTypeId)?.price;
+      if (rate === undefined) {
+        throw new Error(`${pkg.name} is not offered in ${type.name} — edit the stay instead`);
+      }
+      stay = Math.round(pax * (rate / 7) * nights * 100) / 100;
+    } else if (pkg) {
+      if (pkg.nights === nights) {
+        stay = pkg.price;
+      } else {
+        // Flat package no longer matches the stay length — fall back to nightly.
+        stay = type.basePrice * nights;
+        dropPackage = true;
+      }
+    } else {
+      stay = type.basePrice * nights;
+    }
+
+    // Resync per-day service lines and attach missing default services
+    const [serviceLines, services] = await Promise.all([
+      ctx.db
+        .query("bookingServices")
+        .withIndex("by_booking", (q) => q.eq("bookingId", args.bookingId))
+        .collect(),
+      ctx.db.query("services").collect(),
+    ]);
+    const serviceById = new Map(services.map((s) => [s._id, s]));
+    let servicesTotal = 0;
+    for (const line of serviceLines) {
+      const svc = serviceById.get(line.serviceId);
+      if (svc?.unit === "per_day" && line.amount > 0) {
+        const amount = svc.price * nights;
+        await ctx.db.patch(line._id, { qty: nights, amount });
+        servicesTotal += amount;
+      } else {
+        servicesTotal += line.amount;
+      }
+    }
+    for (const svc of services) {
+      if (!svc.active || !svc.includedByDefault) continue;
+      if (serviceLines.some((l) => l.serviceId === svc._id)) continue;
+      const qty = svc.unit === "per_day" ? nights : 1;
+      const amount = svc.price * qty;
+      await ctx.db.insert("bookingServices", {
+        bookingId: args.bookingId,
+        serviceId: svc._id,
+        qty,
+        amount,
+      });
+      servicesTotal += amount;
+    }
+
+    // Whole-stay move: carry activity dates along
+    const shiftDays = Math.round(
+      (Date.parse(args.checkIn) - Date.parse(booking.checkIn)) / 86400000,
+    );
+    const sameLength =
+      nights === Math.round((Date.parse(booking.checkOut) - Date.parse(booking.checkIn)) / 86400000);
+    if (shiftDays !== 0 && sameLength) {
+      const acts = await ctx.db
+        .query("bookingActivities")
+        .withIndex("by_booking", (q) => q.eq("bookingId", args.bookingId))
+        .collect();
+      for (const a of acts) {
+        const shifted = new Date(Date.parse(a.date) + shiftDays * 86400000)
+          .toISOString()
+          .slice(0, 10);
+        await ctx.db.patch(a._id, { date: shifted });
+      }
+    }
+
+    const totalAmount = Math.round((stay + servicesTotal) * 100) / 100;
+    await ctx.db.patch(args.bookingId, {
+      roomId: args.roomId,
+      bedId: args.bedId,
+      checkIn: args.checkIn,
+      checkOut: args.checkOut,
+      totalAmount,
+      packageId: dropPackage ? undefined : booking.packageId,
+    });
+    await ctx.scheduler.runAfter(0, internal.channex.pushAvailability, {
+      start: booking.checkIn < args.checkIn ? booking.checkIn : args.checkIn,
+      end: booking.checkOut > args.checkOut ? booking.checkOut : args.checkOut,
+    });
+    const guest = await ctx.db.get(booking.guestId);
+    await logAudit(ctx, actor, {
+      action: "booking.move",
+      entity: "bookings",
+      entityId: args.bookingId,
+      summary: `Moved ${guest?.fullName}: ${booking.checkIn}→${booking.checkOut} became ${args.checkIn}→${args.checkOut} (${eurLog(booking.totalAmount)} → ${eurLog(totalAmount)})`,
+      before: {
+        roomId: booking.roomId,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        totalAmount: booking.totalAmount,
+      },
+      after: { roomId: args.roomId, checkIn: args.checkIn, checkOut: args.checkOut, totalAmount },
+    });
+    return { totalAmount, nights, droppedPackage: dropPackage };
+  },
+});
+
+function eurLog(n: number) {
+  return `€${n.toFixed(2)}`;
+}

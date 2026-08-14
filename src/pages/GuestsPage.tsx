@@ -12,6 +12,7 @@ import {
   UsersThree,
 } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
+import { errorMessage } from "../components/toast";
 import type { Id } from "../../convex/_generated/dataModel";
 import {
   Badge,
@@ -35,19 +36,27 @@ const PAGE_SIZE = 10;
 export default function GuestsPage() {
   const [search, setSearchRaw] = useState("");
   const [page, setPage] = useState(0);
+  const [tab, setTab] = useState<"current" | "archive">("current");
   const [openGuestId, setOpenGuestId] = useState<Id<"guests"> | null>(null);
-  const guests = useQuery(api.guestDirectory.list, { search: search || undefined });
+  const today = new Date().toISOString().slice(0, 10);
+  const guests = useQuery(api.guestDirectory.list, { search: search || undefined, today });
 
   const setSearch = (value: string) => {
     setSearchRaw(value);
     setPage(0);
   };
 
-  const pageCount = guests ? Math.max(1, Math.ceil(guests.length / PAGE_SIZE)) : 1;
+  const filtered = useMemo(
+    () => guests?.filter((g) => (tab === "current" ? g.current : !g.current)),
+    [guests, tab],
+  );
+  const currentCount = guests?.filter((g) => g.current).length ?? 0;
+  const archiveCount = guests ? guests.length - currentCount : 0;
+  const pageCount = filtered ? Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)) : 1;
   const safePage = Math.min(page, pageCount - 1);
   const pageRows = useMemo(
-    () => guests?.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
-    [guests, safePage],
+    () => filtered?.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE),
+    [filtered, safePage],
   );
 
   return (
@@ -73,6 +82,37 @@ export default function GuestsPage() {
         </div>
       </header>
 
+      <div className="mb-4 inline-flex rounded-xl border border-sand-200 bg-white p-1">
+        {(
+          [
+            { key: "current", label: "Current & upcoming", count: currentCount },
+            { key: "archive", label: "Archive", count: archiveCount },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => {
+              setTab(t.key);
+              setPage(0);
+            }}
+            className={cx(
+              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors cursor-pointer",
+              tab === t.key ? "bg-ocean-700 text-sand-50" : "text-ink-soft hover:bg-sand-100",
+            )}
+          >
+            {t.label}
+            <span
+              className={cx(
+                "num rounded-full px-2 py-0.5 text-[11px]",
+                tab === t.key ? "bg-white/20" : "bg-sand-100 text-ink-faint",
+              )}
+            >
+              {t.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div
         className="overflow-hidden rounded-xl2 border border-sand-200 bg-white"
         style={{ boxShadow: "var(--shadow-diffuse)" }}
@@ -81,14 +121,22 @@ export default function GuestsPage() {
           <div className="p-4">
             <SkeletonRows count={6} />
           </div>
-        ) : guests.length === 0 ? (
+        ) : (filtered?.length ?? 0) === 0 ? (
           <EmptyState
             icon={<UsersThree size={22} weight="duotone" />}
-            title={search ? "No guests match" : "No guests yet"}
+            title={
+              search
+                ? "No guests match"
+                : tab === "current"
+                  ? "No current or upcoming guests"
+                  : "No archived guests yet"
+            }
             hint={
               search
                 ? "Try another name, email or country."
-                : "Guests appear here as soon as bookings come in."
+                : tab === "current"
+                  ? "Guests appear here while they're in house or have an upcoming stay."
+                  : "Past guests land here after checkout."
             }
           />
         ) : (
@@ -163,11 +211,11 @@ export default function GuestsPage() {
         )}
 
         {/* Pagination */}
-        {guests && guests.length > PAGE_SIZE && (
+        {filtered && filtered.length > PAGE_SIZE && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-sand-200 px-5 py-3">
             <p className="num text-xs text-ink-faint">
-              {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, guests.length)} of{" "}
-              {guests.length} guests
+              {safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} of{" "}
+              {filtered.length} guests
             </p>
             <div className="flex items-center gap-1">
               <button
@@ -222,9 +270,18 @@ function GuestProfileDrawer({
     guestId ? { guestId } : "skip",
   );
   const updateGuest = useMutation(api.bookings.updateGuest);
+  const updateBooking = useMutation(api.bookings.update);
+  const removeBooking = useMutation(api.bookings.remove);
+  const removeGuest = useMutation(api.bookings.removeGuest);
+  const me = useQuery(api.users.me);
+  const rooms = useQuery(api.inventory.listRooms);
+  const canManage = me?.role === "admin" || me?.role === "manager";
   const [editing, setEditing] = useState(false);
   const [openBookingId, setOpenBookingId] = useState<Id<"bookings"> | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [editingStay, setEditingStay] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [stayError, setStayError] = useState<string | null>(null);
 
   if (!guestId) return null;
   const guest = profile?.guest;
@@ -407,7 +464,217 @@ function GuestProfileDrawer({
                           )}
                         </span>
                       </div>
+                      <div className="mt-3 flex flex-col gap-4 border-t border-sand-100 pt-3 text-sm">
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2.5 sm:grid-cols-3">
+                            <div>
+                              <p className="text-xs text-ink-faint">Reservation</p>
+                              <p className="num mt-0.5 font-bold tracking-wide">
+                                {stay.reservationCode ?? "—"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ink-faint">Package</p>
+                              <p className="mt-0.5 font-semibold">{stay.packageName ?? "Room only"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ink-faint">Guests</p>
+                              <p className="num mt-0.5 font-semibold">
+                                {stay.adults} adult{stay.adults === 1 ? "" : "s"}
+                                {stay.children > 0 ? ` · ${stay.children} child${stay.children === 1 ? "" : "ren"}` : ""}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ink-faint">Duration</p>
+                              <p className="num mt-0.5 font-semibold">{stay.nights} nights</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ink-faint">Paid</p>
+                              <p className="num mt-0.5 font-semibold">{eur(stay.paid)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-ink-faint">Balance</p>
+                              <p className={cx("num mt-0.5 font-semibold", stay.balance > 0.005 && "text-coral")}>
+                                {stay.balance > 0.005 ? eur(stay.balance) : "Settled"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {stay.companions.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-ink-faint">Travelling with</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {stay.companions.map((c, i) => (
+                                  <span key={i} className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-semibold">
+                                    {c.name}
+                                    {c.surfLevel ? ` · ${c.surfLevel}` : ""}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {stay.payments.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-ink-faint">Payments</p>
+                              <ul className="divide-y divide-sand-100 rounded-xl border border-sand-200">
+                                {stay.payments.map((pay, i) => (
+                                  <li key={i} className="flex items-center justify-between gap-3 px-3.5 py-2">
+                                    <span className="num text-xs text-ink-faint">{prettyDate(pay.date)}</span>
+                                    <span className="flex-1 text-xs capitalize text-ink-soft">
+                                      {pay.method.replace("_", " ")}
+                                      {pay.note ? ` — ${pay.note}` : ""}
+                                    </span>
+                                    <span className={cx("num text-sm font-bold", pay.direction === "refund" && "text-coral")}>
+                                      {pay.direction === "refund" ? "−" : ""}{eur(pay.amount)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {stay.extras.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-ink-faint">Extras</p>
+                              <ul className="flex flex-col gap-1">
+                                {stay.extras.map((line, i) => (
+                                  <li key={i} className="flex justify-between text-sm">
+                                    <span>
+                                      {line.name}
+                                      <span className="num text-xs text-ink-faint"> ×{line.qty}</span>
+                                    </span>
+                                    <span className="num font-semibold">{line.amount > 0 ? eur(line.amount) : "Included"}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {stay.activities.length > 0 && (
+                            <div>
+                              <p className="mb-1.5 text-xs text-ink-faint">Activities</p>
+                              <ul className="flex flex-col gap-1">
+                                {stay.activities.map((line, i) => (
+                                  <li key={i} className="flex justify-between text-sm">
+                                    <span>{line.name}</span>
+                                    <span className="num text-xs text-ink-faint">
+                                      {prettyDate(line.date)} · {line.participants} pax
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {stay.notes && (
+                            <div>
+                              <p className="text-xs text-ink-faint">Booking notes</p>
+                              <p className="mt-0.5 text-ink-soft">{stay.notes}</p>
+                            </div>
+                          )}
+
+                          {canManage && editingStay === stay.bookingId && (
+                            <form
+                              className="flex flex-col gap-3 rounded-xl border border-sand-200 bg-sand-50 p-4"
+                              onSubmit={async (e) => {
+                                e.preventDefault();
+                                setStayError(null);
+                                const form = new FormData(e.currentTarget);
+                                try {
+                                  await updateBooking({
+                                    bookingId: stay.bookingId,
+                                    checkIn: String(form.get("checkIn")),
+                                    checkOut: String(form.get("checkOut")),
+                                    roomId: form.get("roomId") as Id<"rooms">,
+                                    adults: Number(form.get("adults")),
+                                    children: Number(form.get("children")),
+                                    totalAmount: Number(form.get("totalAmount")),
+                                    notes: String(form.get("notes")) || undefined,
+                                  });
+                                  setEditingStay(null);
+                                } catch (err) {
+                                  setStayError(errorMessage(err, "Could not save the stay."));
+                                }
+                              }}
+                            >
+                              <div className="grid grid-cols-2 gap-3">
+                                <Field label="Check-in">
+                                  <Input name="checkIn" type="date" defaultValue={stay.checkIn} required />
+                                </Field>
+                                <Field label="Check-out">
+                                  <Input name="checkOut" type="date" defaultValue={stay.checkOut} required />
+                                </Field>
+                                <Field label="Room">
+                                  <Select name="roomId" defaultValue={stay.roomId}>
+                                    {(rooms ?? []).map((room) => (
+                                      <option key={room._id} value={room._id}>{room.name}</option>
+                                    ))}
+                                  </Select>
+                                </Field>
+                                <Field label="Total (€)">
+                                  <Input name="totalAmount" type="number" min={0} step="0.01" defaultValue={stay.totalAmount} required />
+                                </Field>
+                                <Field label="Adults">
+                                  <Input name="adults" type="number" min={1} defaultValue={stay.adults} required />
+                                </Field>
+                                <Field label="Children">
+                                  <Input name="children" type="number" min={0} defaultValue={stay.children} required />
+                                </Field>
+                              </div>
+                              <Field label="Notes">
+                                <Textarea name="notes" defaultValue={stay.notes} />
+                              </Field>
+                              {stayError && <p className="text-xs font-semibold text-coral">{stayError}</p>}
+                              <div className="flex gap-2">
+                                <Button type="submit" size="sm">Save stay</Button>
+                                <Button type="button" size="sm" variant="secondary" onClick={() => { setEditingStay(null); setStayError(null); }}>
+                                  Cancel
+                                </Button>
+                              </div>
+                            </form>
+                          )}
+                        </div>
+
                       <div className="mt-2 flex items-center gap-4">
+                        {canManage && (
+                          <button
+                            onClick={() => {
+                              setEditingStay(editingStay === stay.bookingId ? null : stay.bookingId);
+                              setStayError(null);
+                            }}
+                            className="flex items-center gap-1 text-xs font-semibold text-ink-faint transition-colors hover:text-ocean-700 cursor-pointer"
+                          >
+                            <PencilSimple size={12} /> Edit stay
+                          </button>
+                        )}
+                        {canManage &&
+                          (confirmDelete === stay.bookingId ? (
+                            <span className="flex items-center gap-2 text-xs font-semibold">
+                              <span className="text-coral">Delete this stay?</span>
+                              <button
+                                onClick={async () => {
+                                  await removeBooking({ bookingId: stay.bookingId });
+                                  setConfirmDelete(null);
+                                }}
+                                className="rounded-lg bg-coral px-2.5 py-1 text-sand-50 cursor-pointer"
+                              >
+                                Yes, delete
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="text-ink-faint hover:text-ink cursor-pointer"
+                              >
+                                Keep
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDelete(stay.bookingId)}
+                              className="flex items-center gap-1 text-xs font-semibold text-ink-faint transition-colors hover:text-coral cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          ))}
                         <button
                           onClick={async () => {
                             await navigator.clipboard.writeText(
@@ -455,6 +722,38 @@ function GuestProfileDrawer({
                 </ul>
               )}
             </section>
+
+            {canManage && (
+              <section className="rounded-xl2 border border-coral/25 bg-coral/5 p-5">
+                <h3 className="text-sm font-bold text-coral">Danger zone</h3>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Deleting a guest removes their profile, every stay, and all linked
+                  payments, extras and requests. This cannot be undone.
+                </p>
+                {confirmDelete === "guest" ? (
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        await removeGuest({ guestId });
+                        setConfirmDelete(null);
+                        onClose();
+                      }}
+                      className="!bg-coral"
+                    >
+                      Yes — delete {guest.fullName}
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => setConfirmDelete(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button size="sm" variant="secondary" className="mt-3" onClick={() => setConfirmDelete("guest")}>
+                    Delete guest…
+                  </Button>
+                )}
+              </section>
+            )}
           </div>
         )}
       </Drawer>

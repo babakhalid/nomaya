@@ -124,6 +124,8 @@ export default defineSchema({
     active: v.boolean(),
     startTime: v.optional(v.string()), // e.g. breakfast at 09:00
     imageUrl: v.optional(v.string()),
+    // Auto-attached to stays when the calendar recalculates a booking
+    includedByDefault: v.optional(v.boolean()),
   }),
 
   packages: defineTable({
@@ -316,6 +318,14 @@ export default defineSchema({
     .index("by_booking", ["bookingId"])
     .index("by_date", ["date"]),
 
+  teamMembers: defineTable({
+    name: v.string(),
+    position: v.string(),
+    salary: v.number(), // monthly, EUR
+    active: v.boolean(),
+    notes: v.optional(v.string()),
+  }),
+
   expenses: defineTable({
     category: v.union(
       v.literal("food"),
@@ -324,8 +334,15 @@ export default defineSchema({
       v.literal("maintenance"),
       v.literal("transport"),
       v.literal("utilities"),
+      v.literal("salary"),
+      v.literal("rent"),
+      v.literal("coaches"),
       v.literal("other"),
     ),
+    // fixed = same every month (salary, rent…); variable = fluctuates
+    kind: v.optional(v.union(v.literal("fixed"), v.literal("variable"))),
+    // Required label when category is "other" — names the expense type
+    customLabel: v.optional(v.string()),
     amount: v.number(),
     currency: v.string(),
     date: v.string(),

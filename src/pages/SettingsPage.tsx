@@ -508,6 +508,7 @@ function ServicesTab() {
               unit: form.get("unit") as "per_stay" | "per_day" | "per_unit",
               active: form.get("active") === "on",
               startTime: String(form.get("startTime")) || undefined,
+              includedByDefault: form.get("includedByDefault") === "on",
             });
             setEditing(null);
           }}
@@ -529,6 +530,14 @@ function ServicesTab() {
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="active" defaultChecked={editingItem?.active ?? true} />
             Active (bookable)
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="includedByDefault"
+              defaultChecked={editingItem?.includedByDefault ?? false}
+            />
+            Included by default (auto-added when a stay is recalculated, e.g. breakfast)
           </label>
           <Button type="submit">{editingItem ? "Save" : "Create"}</Button>
         </form>

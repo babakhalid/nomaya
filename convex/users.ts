@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalAction, internalMutation, mutation, query } from "./_generated/server";
+import { modifyAccountCredentials } from "@convex-dev/auth/server";
 import { logAudit, requireRole, requireUser } from "./lib/access";
 import { roleValidator } from "./schema";
 
@@ -82,5 +83,20 @@ export const forceRole = internalMutation({
       after: { role: args.role },
     });
     return `${user.name ?? user.email} is now ${args.role}`;
+  },
+});
+
+/**
+ * DEV helper — reset one account's password (nothing is deleted).
+ *   npx convex run users:devSetPassword '{"email":"...","password":"..."}'
+ */
+export const devSetPassword = internalAction({
+  args: { email: v.string(), password: v.string() },
+  handler: async (ctx, args): Promise<string> => {
+    await modifyAccountCredentials(ctx, {
+      provider: "password",
+      account: { id: args.email, secret: args.password },
+    });
+    return `Password updated for ${args.email}.`;
   },
 });

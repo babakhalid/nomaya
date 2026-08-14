@@ -81,6 +81,7 @@ export const upsertService = mutation({
     ),
     active: v.boolean(),
     startTime: v.optional(v.string()),
+    includedByDefault: v.optional(v.boolean()),
   },
   handler: async (ctx, { id, ...fields }) => {
     const actor = await requireRole(ctx, "manager");

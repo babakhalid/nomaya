@@ -119,3 +119,42 @@ export const overview = query({
     };
   },
 });
+
+
+/** Stats for an arbitrary date range — powers the dashboard range picker. */
+export const period = query({
+  args: { start: v.string(), end: v.string() },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const [bookings, payments, guests] = await Promise.all([
+      ctx.db.query("bookings").collect(),
+      ctx.db.query("payments").collect(),
+      ctx.db.query("guests").collect(),
+    ]);
+    const active = bookings.filter(
+      (b) => b.status !== "cancelled" && b.status !== "no_show",
+    );
+    // end is inclusive, matching the pickers
+    const inRange = active.filter((b) => b.checkIn <= args.end && b.checkOut > args.start);
+    const nights = inRange.reduce(
+      (sum, b) =>
+        sum + Math.round((Date.parse(b.checkOut) - Date.parse(b.checkIn)) / 86400000),
+      0,
+    );
+    const revenue = payments
+      .filter((p) => p.date >= args.start && p.date <= args.end)
+      .reduce((s, p) => s + (p.direction === "in" ? p.amount : -p.amount), 0);
+    const startMs = Date.parse(args.start);
+    const endMs = Date.parse(args.end) + 86400000;
+    const newGuests = guests.filter(
+      (g) => g._creationTime >= startMs && g._creationTime < endMs,
+    ).length;
+    return {
+      totalGuests: guests.length,
+      newGuests,
+      bookings: inRange.length,
+      nights,
+      revenue: Math.round(revenue * 100) / 100,
+    };
+  },
+});
