@@ -371,6 +371,8 @@ const DEMO_GUESTS = [
   { fullName: "Yasmine El Idrissi", email: "yasmine.elidrissi@gmail.com", phone: "+212 6 61 48 29 07", country: "Morocco", surfLevel: "beginner" as const },
   { fullName: "Tomás Herrera", email: "tomas.herrera.v@gmail.com", phone: "+34 655 21 90 48", country: "Spain", surfLevel: "advanced" as const },
   { fullName: "Ingrid Solberg", email: "ingrid.solberg@icloud.com", phone: "+47 928 41 566", country: "Norway", surfLevel: "beginner" as const },
+  { fullName: "Nora Lindqvist", email: "nora.lindqvist@icloud.com", phone: "+46 70 314 82 65", country: "Sweden", surfLevel: "beginner" as const },
+  { fullName: "Pablo Mendes", email: "pablo.mendes.surf@gmail.com", phone: "+55 11 97243 8156", country: "Brazil", surfLevel: "advanced" as const },
 ];
 
 export const demoData = internalMutation({
@@ -501,5 +503,134 @@ export const demoCleanup = internalMutation({
       await ctx.db.delete(g._id);
     }
     return `Removed ${n} demo bookings.`;
+  },
+});
+
+// Today's movement for the walkthrough: one arrival, one departure, and
+// activities happening today for in-house guests. Idempotent.
+export const demoToday = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const shift = (iso: string, days: number) =>
+      new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
+
+    const guests = await ctx.db.query("guests").collect();
+    if (guests.some((g) => g.email === "nora.lindqvist@icloud.com")) {
+      return "Today's demo movement already added.";
+    }
+    const rooms = await ctx.db.query("rooms").collect();
+    const packages = await ctx.db.query("packages").collect();
+    const activities = await ctx.db.query("activities").collect();
+    const roomBy = (name: string) => {
+      const r = rooms.find((x) => x.name === name);
+      if (!r) throw new Error(`Room not found: ${name}`);
+      return r._id;
+    };
+    const activityBy = (name: string) => activities.find((a) => a.name === name);
+
+    // Arriving today — 2 sisters on the beginner formule, deposit paid
+    const noraId = await ctx.db.insert("guests", {
+      fullName: "Nora Lindqvist",
+      email: "nora.lindqvist@icloud.com",
+      phone: "+46 70 314 82 65",
+      country: "Sweden",
+      surfLevel: "beginner",
+    });
+    const debutant = packages.find((p) => p.name.startsWith("Surfeur débutant"));
+    const arrivalId = await ctx.db.insert("bookings", {
+      guestId: noraId,
+      roomId: roomBy("Double or Twin"),
+      packageId: debutant?._id,
+      checkIn: today,
+      checkOut: shift(today, 7),
+      status: "confirmed",
+      source: "direct",
+      adults: 2,
+      children: 0,
+      totalAmount: 1080, // 2 × €540/person/week (shared twin tier)
+      currency: "EUR",
+      companions: [{ name: "Elsa Lindqvist", surfLevel: "beginner" }],
+      portalToken: generatePortalToken(),
+      reservationCode: generateReservationCode(),
+    });
+    await ctx.db.insert("payments", {
+      bookingId: arrivalId,
+      amount: 320,
+      currency: "EUR",
+      method: "card",
+      direction: "in",
+      date: shift(today, -6),
+      note: "Deposit via portal",
+    });
+
+    // Departing today — short room-only stay, fully settled
+    const pabloId = await ctx.db.insert("guests", {
+      fullName: "Pablo Mendes",
+      email: "pablo.mendes.surf@gmail.com",
+      phone: "+55 11 97243 8156",
+      country: "Brazil",
+      surfLevel: "advanced",
+    });
+    const departureId = await ctx.db.insert("bookings", {
+      guestId: pabloId,
+      roomId: roomBy("Double Room"),
+      checkIn: shift(today, -3),
+      checkOut: today,
+      status: "checked_in",
+      source: "airbnb",
+      adults: 2,
+      children: 0,
+      totalAmount: 135,
+      currency: "EUR",
+      portalToken: generatePortalToken(),
+      reservationCode: generateReservationCode(),
+    });
+    await ctx.db.insert("payments", {
+      bookingId: departureId,
+      amount: 135,
+      currency: "EUR",
+      method: "ota_payout",
+      direction: "in",
+      date: shift(today, -3),
+    });
+
+    // Activities today — the in-house guests hit the water and the mat
+    const surf = activityBy("Surf Lesson");
+    const yoga = activityBy("Yoga");
+    const cooking = activityBy("Cooking Class");
+    const inHouse = (await ctx.db.query("bookings").collect()).filter(
+      (b) => b.status === "checked_in" && b.checkIn <= today && b.checkOut > today,
+    );
+    let acts = 0;
+    for (const [i, booking] of inHouse.entries()) {
+      const activity = i % 2 === 0 ? surf : yoga;
+      if (!activity) continue;
+      await ctx.db.insert("bookingActivities", {
+        bookingId: booking._id,
+        activityId: activity._id,
+        date: today,
+        participants: booking.adults + booking.children,
+      });
+      acts++;
+    }
+    if (surf) {
+      await ctx.db.insert("bookingActivities", {
+        bookingId: arrivalId,
+        activityId: surf._id,
+        date: shift(today, 1),
+        participants: 2,
+      });
+    }
+    if (cooking) {
+      await ctx.db.insert("bookingActivities", {
+        bookingId: departureId,
+        activityId: cooking._id,
+        date: today,
+        participants: 2,
+      });
+      acts++;
+    }
+    return `Added: arrival today (Nora ×2, formule), departure today (Pablo ×2), ${acts} activity bookings today.`;
   },
 });
