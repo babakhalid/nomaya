@@ -405,7 +405,7 @@ export default function BookPage() {
                 title="Bed & Breakfast"
                 description="For those looking for more flexibility and freedom. Enjoy the surf-house vibe and shape your own days in the region — room and breakfast, everything else à la carte."
                 priceLabel={`from ${eur(catalog.roomOnlyFrom)} / night`}
-                imageUrl={undefined}
+                imageUrl="/experiences/pack-bnb.jpg"
                 onPick={() => pickFormule("")}
               />
             </div>

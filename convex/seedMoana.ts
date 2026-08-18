@@ -634,3 +634,25 @@ export const demoToday = internalMutation({
     return `Added: arrival today (Nora ×2, formule), departure today (Pablo ×2), ${acts} activity bookings today.`;
   },
 });
+
+// Give every formule its own photo (real Moana shots, 2026-08-18).
+export const setPackImages = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const byName: Record<string, string> = {
+      "Surfeur débutant / intermédiaire": "/experiences/pack-debutant.jpg",
+      "Surf Guiding": "/experiences/pack-guiding.jpg",
+      "Famille de Surfeurs": "/experiences/pack-famille.jpg",
+      "Surf & Yoga": "/experiences/pack-surfyoga.jpg",
+    };
+    let n = 0;
+    for (const pkg of await ctx.db.query("packages").collect()) {
+      const img = byName[pkg.name];
+      if (img) {
+        await ctx.db.patch(pkg._id, { imageUrl: img });
+        n++;
+      }
+    }
+    return `Updated ${n} package photos.`;
+  },
+});
