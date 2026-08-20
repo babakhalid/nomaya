@@ -1,8 +1,9 @@
 import { v } from "convex/values";
 import { internalAction, internalMutation, mutation, query } from "./_generated/server";
-import { modifyAccountCredentials } from "@convex-dev/auth/server";
+import { createAccount, modifyAccountCredentials } from "@convex-dev/auth/server";
 import { logAudit, requireRole, requireUser } from "./lib/access";
 import { roleValidator } from "./schema";
+import { internal } from "./_generated/api";
 
 export const me = query({
   args: {},
@@ -98,5 +99,37 @@ export const devSetPassword = internalAction({
       account: { id: args.email, secret: args.password },
     });
     return `Password updated for ${args.email}.`;
+  },
+});
+
+
+/**
+ * DEV/admin provisioning — create a staff login with a role in one step.
+ *   npx convex run users:devCreateStaff '{"email":"...","password":"...","name":"...","role":"host"}'
+ * If the account already exists it just (re)sets the password and role.
+ */
+export const devCreateStaff = internalAction({
+  args: {
+    email: v.string(),
+    password: v.string(),
+    name: v.string(),
+    role: roleValidator,
+  },
+  handler: async (ctx, args): Promise<string> => {
+    try {
+      await createAccount(ctx, {
+        provider: "password",
+        account: { id: args.email, secret: args.password },
+        profile: { email: args.email, name: args.name } as never,
+      });
+    } catch {
+      // Already exists — just reset the secret.
+      await modifyAccountCredentials(ctx, {
+        provider: "password",
+        account: { id: args.email, secret: args.password },
+      });
+    }
+    await ctx.runMutation(internal.users.forceRole, { email: args.email, role: args.role });
+    return `Provisioned ${args.name} <${args.email}> as ${args.role}.`;
   },
 });
