@@ -3,11 +3,11 @@ import { useMutation, useQuery } from "convex/react";
 import { addDays, format, isToday, parseISO, startOfWeek } from "date-fns";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { CaretLeft, CaretRight } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
-import { errorMessage } from "../components/toast";
 import type { Id } from "../../convex/_generated/dataModel";
-import { Button, cx } from "../components/ui";
+import { Button, Drawer, Field, Input, Select, cx } from "../components/ui";
+import { errorMessage, toast } from "../components/toast";
 import NewBookingDrawer from "../components/calendar/NewBookingDrawer";
 import BookingDetailDrawer from "../components/calendar/BookingDetailDrawer";
 import DayPanel from "../components/calendar/DayPanel";
@@ -80,8 +80,11 @@ export default function CalendarPage() {
   const dragging = useRef(false);
   const scope = useRef<HTMLDivElement>(null);
   const moveBooking = useMutation(api.bookings.move);
+  const blockDates = useMutation(api.inventory.blockDates);
+  const removeBlock = useMutation(api.inventory.removeBlock);
   const me = useQuery(api.users.me);
   const canManage = me?.role === "admin" || me?.role === "manager";
+  const [blockOpen, setBlockOpen] = useState(false);
 
   const days = useMemo(() => {
     let start = parseISO(rangeStart);
@@ -160,6 +163,7 @@ export default function CalendarPage() {
   // Group rows by room for section headers in the label rail
   const rows = grid?.rows ?? [];
   const bookings = grid?.bookings ?? [];
+  const blocks = grid?.blocks ?? [];
 
   // Booking-bar drag: window-level listeners so the drag survives leaving the bar
   useEffect(() => {
@@ -269,6 +273,11 @@ export default function CalendarPage() {
           >
             <CaretRight size={15} weight="bold" />
           </Button>
+          {canManage && (
+            <Button size="sm" onClick={() => setBlockOpen(true)}>
+              Block dates
+            </Button>
+          )}
         </div>
       </header>
 
@@ -414,6 +423,41 @@ export default function CalendarPage() {
                       />
                     );
                   })}
+
+                  {/* Room blocks — striped, non-bookable ranges */}
+                  {blocks
+                    .filter((bl) => (row.bedId ? false : bl.roomId === row.roomId))
+                    .map((bl) => {
+                      const from = Math.max(idxOf(bl.start), -0.5);
+                      const to = Math.min(idxOf(bl.end), days.length + 0.5);
+                      const left = LABEL_W + (from + 0.5) * COL_W;
+                      const width = (to - from) * COL_W - 4;
+                      if (width <= 0) return null;
+                      return (
+                        <div
+                          key={bl._id}
+                          className="group absolute top-1 z-[4] flex h-9 items-center gap-1 overflow-hidden rounded-lg border border-coral/30 px-2 text-[11px] font-bold text-coral"
+                          style={{
+                            left,
+                            width,
+                            backgroundImage:
+                              "repeating-linear-gradient(45deg, rgba(192,91,77,0.10) 0, rgba(192,91,77,0.10) 6px, rgba(192,91,77,0.02) 6px, rgba(192,91,77,0.02) 12px)",
+                          }}
+                          title={`Blocked: ${bl.reason} (${bl.start} → ${bl.end})`}
+                        >
+                          <span className="truncate">{bl.reason}</span>
+                          {canManage && (
+                            <button
+                              onClick={() => void removeBlock({ blockId: bl._id })}
+                              className="ml-auto shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-coral/15 group-hover:opacity-100 cursor-pointer"
+                              title="Remove block"
+                            >
+                              <X size={12} weight="bold" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
 
                   {/* Booking bars — half-day offset like classic PMS charts */}
                   {rowBookings.map((booking) => {
@@ -566,6 +610,61 @@ export default function CalendarPage() {
           guest left a note — click the cell
         </span>
       </div>
+
+      {canManage && (
+        <Drawer open={blockOpen} onClose={() => setBlockOpen(false)} title="Block room dates">
+          <form
+            className="flex flex-col gap-4"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = new FormData(e.currentTarget);
+              try {
+                await blockDates({
+                  roomId: form.get("roomId") as Id<"rooms">,
+                  start: String(form.get("start")),
+                  end: String(form.get("end")),
+                  reason: String(form.get("reason")),
+                });
+                toast("success", "Dates blocked.");
+                setBlockOpen(false);
+              } catch (err) {
+                toast("error", errorMessage(err, "Could not block those dates."));
+              }
+            }}
+          >
+            <p className="text-sm text-ink-faint">
+              Take a room off the calendar for renovation, repairs or any reason.
+              Guests can't book it and staff can't drag a stay onto it.
+            </p>
+            <Field label="Room">
+              <Select name="roomId" required defaultValue="">
+                <option value="" disabled>
+                  Choose a room…
+                </option>
+                {Array.from(
+                  new Map(rows.map((r) => [r.roomId, r.roomName])).entries(),
+                ).map(([roomId, roomName]) => (
+                  <option key={roomId} value={roomId}>
+                    {roomName}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="From">
+                <Input name="start" type="date" required defaultValue={format(days[0], "yyyy-MM-dd")} />
+              </Field>
+              <Field label="To (exclusive)">
+                <Input name="end" type="date" required defaultValue={format(addDays(days[0], 1), "yyyy-MM-dd")} />
+              </Field>
+            </div>
+            <Field label="Reason">
+              <Input name="reason" required placeholder="Renovation, deep clean, private use…" maxLength={120} />
+            </Field>
+            <Button type="submit">Block these dates</Button>
+          </form>
+        </Drawer>
+      )}
 
       <NewBookingDrawer
         pending={pendingBooking}

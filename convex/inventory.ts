@@ -191,3 +191,92 @@ export const listBeds = query({
     return beds.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
+
+// ── Room blocks (renovation / off-market date ranges) ────────────────────
+
+export const listBlocks = query({
+  args: { start: v.string(), end: v.string() },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const blocks = await ctx.db.query("roomBlocks").collect();
+    return blocks.filter((b) => b.start < args.end && b.end > args.start);
+  },
+});
+
+export const blockDates = mutation({
+  args: {
+    roomId: v.id("rooms"),
+    start: v.string(),
+    end: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, "manager");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.start) || !/^\d{4}-\d{2}-\d{2}$/.test(args.end)) {
+      throw new Error("Invalid dates");
+    }
+    if (args.end <= args.start) throw new Error("End must be after start");
+    const reason = args.reason.trim();
+    if (reason.length < 2 || reason.length > 120) throw new Error("Add a short reason");
+    const room = await ctx.db.get(args.roomId);
+    if (!room) throw new Error("Room not found");
+
+    // Don't block over an existing active booking on that room.
+    const bookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_room", (q) => q.eq("roomId", args.roomId))
+      .collect();
+    const clash = bookings.find(
+      (b) =>
+        b.status !== "cancelled" &&
+        b.status !== "no_show" &&
+        b.checkIn < args.end &&
+        b.checkOut > args.start,
+    );
+    if (clash) {
+      throw new Error(`A booking already covers ${clash.checkIn} → ${clash.checkOut}`);
+    }
+
+    const id = await ctx.db.insert("roomBlocks", {
+      roomId: args.roomId,
+      start: args.start,
+      end: args.end,
+      reason,
+      createdBy: actor._id,
+    });
+    await ctx.scheduler.runAfter(0, internal.channex.pushAvailability, {
+      start: args.start,
+      end: args.end,
+    });
+    await logAudit(ctx, actor, {
+      action: "room.block",
+      entity: "roomBlocks",
+      entityId: id,
+      summary: `Blocked ${room.name}: ${args.start} → ${args.end} (${reason})`,
+      after: { roomId: args.roomId, start: args.start, end: args.end, reason },
+    });
+    return id;
+  },
+});
+
+export const removeBlock = mutation({
+  args: { blockId: v.id("roomBlocks") },
+  handler: async (ctx, args) => {
+    const actor = await requireRole(ctx, "manager");
+    const block = await ctx.db.get(args.blockId);
+    if (!block) return;
+    const room = await ctx.db.get(block.roomId);
+    await ctx.db.delete(args.blockId);
+    await ctx.scheduler.runAfter(0, internal.channex.pushAvailability, {
+      start: block.start,
+      end: block.end,
+    });
+    await logAudit(ctx, actor, {
+      action: "room.unblock",
+      entity: "roomBlocks",
+      entityId: args.blockId,
+      summary: `Unblocked ${room?.name ?? "room"}: ${block.start} → ${block.end}`,
+      before: block,
+    });
+  },
+});

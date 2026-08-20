@@ -22,6 +22,7 @@ import {
   STATUS_TONE,
 } from "../ui";
 import { eur, isoToday, prettyDate, SOURCE_LABELS, STATUS_LABELS } from "../../lib/format";
+import { errorMessage, toast } from "../toast";
 import { downloadBookingConfirmation } from "../../lib/bookingConfirmationPdf";
 
 const NEXT_STATUS: Record<string, { label: string; to: "confirmed" | "checked_in" | "checked_out" }[]> = {
@@ -59,6 +60,7 @@ export default function BookingDetailDrawer({
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!bookingId) return null;
@@ -142,7 +144,7 @@ export default function BookingDetailDrawer({
                 <Button
                   size="sm"
                   variant="danger"
-                  onClick={() => void setStatus({ bookingId, status: "cancelled" })}
+                  onClick={() => setConfirmCancel(true)}
                 >
                   Cancel
                 </Button>
@@ -513,6 +515,49 @@ export default function BookingDetailDrawer({
               {error}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Cancel confirmation */}
+      {confirmCancel && booking && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
+            onClick={() => setConfirmCancel(false)}
+          />
+          <div
+            className="relative w-full max-w-sm rounded-xl2 border border-sand-200 bg-sand-50 p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+          >
+            <h3 className="text-lg font-black tracking-tight">Cancel this booking?</h3>
+            <p className="mt-2 text-sm text-ink-soft">
+              {detail?.guest?.fullName}'s stay ({prettyDate(booking.checkIn)} →{" "}
+              {prettyDate(booking.checkOut)}) will be marked cancelled and the room
+              freed on the calendar. This can't be undone.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmCancel(false)}>
+                Keep booking
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await setStatus({ bookingId, status: "cancelled" });
+                    toast("success", "Booking cancelled.");
+                    setConfirmCancel(false);
+                    onClose();
+                  } catch (err) {
+                    toast("error", errorMessage(err, "Could not cancel the booking."));
+                  }
+                }}
+              >
+                Yes, cancel it
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </Drawer>
