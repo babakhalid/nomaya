@@ -71,11 +71,12 @@ export const grid = query({
   handler: async (ctx, args) => {
     await requireUser(ctx);
 
-    const [roomTypes, rooms, beds, bookings] = await Promise.all([
+    const [roomTypes, rooms, beds, bookings, roomBlocks] = await Promise.all([
       ctx.db.query("roomTypes").collect(),
       ctx.db.query("rooms").collect(),
       ctx.db.query("beds").collect(),
       ctx.db.query("bookings").collect(),
+      ctx.db.query("roomBlocks").collect(),
     ]);
 
     const typeById = new Map(roomTypes.map((t) => [t._id, t]));
@@ -248,6 +249,15 @@ export const grid = query({
         adults: b.adults,
         children: b.children,
       })),
+      blocks: roomBlocks
+        .filter((bl) => bl.start < args.end && bl.end > args.start)
+        .map((bl) => ({
+          _id: bl._id,
+          roomId: bl.roomId,
+          start: bl.start,
+          end: bl.end,
+          reason: bl.reason,
+        })),
       summary: {
         // catalog rows always shown; totals may be zero on quiet weeks
         packages: packageRows,

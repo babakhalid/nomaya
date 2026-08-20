@@ -54,16 +54,22 @@ export const availability = query({
   handler: async (ctx, args) => {
     const nights = validateStay(args.checkIn, args.checkOut);
 
-    const [roomTypes, rooms, beds, bookings, packages, services] = await Promise.all([
+    const [roomTypes, rooms, beds, bookings, packages, services, roomBlocks] = await Promise.all([
       ctx.db.query("roomTypes").collect(),
       ctx.db.query("rooms").collect(),
       ctx.db.query("beds").collect(),
       ctx.db.query("bookings").collect(),
       ctx.db.query("packages").collect(),
       ctx.db.query("services").collect(),
+      ctx.db.query("roomBlocks").collect(),
     ]);
 
     const taken = bookings.filter((b) => overlaps(b, args.checkIn, args.checkOut));
+    const blockedRoomIds = new Set(
+      roomBlocks
+        .filter((bl) => bl.start < args.checkOut && bl.end > args.checkIn)
+        .map((bl) => bl.roomId),
+    );
 
     // One card per actual room — guests pick the room they saw in the photos.
     const typeById = new Map(roomTypes.map((t) => [t._id, t]));
@@ -73,7 +79,9 @@ export const availability = query({
       .map(async (room) => {
         const type = typeById.get(room.roomTypeId);
         let available: boolean;
-        if (type?.mode === "dorm") {
+        if (blockedRoomIds.has(room._id)) {
+          available = false;
+        } else if (type?.mode === "dorm") {
           const roomBeds = beds.filter((b) => b.roomId === room._id);
           const takenBeds = new Set(
             taken.filter((b) => b.roomId === room._id && b.bedId).map((b) => b.bedId),
@@ -164,10 +172,11 @@ export const calendarAvailability = query({
   args: { start: v.string(), end: v.string() },
   handler: async (ctx, args) => {
     if (nightsBetween(args.start, args.end) > 120) throw new Error("Range too large");
-    const [rooms, beds, bookings] = await Promise.all([
+    const [rooms, beds, bookings, roomBlocks] = await Promise.all([
       ctx.db.query("rooms").collect(),
       ctx.db.query("beds").collect(),
       ctx.db.query("bookings").collect(),
+      ctx.db.query("roomBlocks").collect(),
     ]);
     const active = rooms.filter((r) => r.status === "available");
     const holding = bookings.filter(
@@ -183,6 +192,10 @@ export const calendarAvailability = query({
       const date = new Date(t).toISOString().slice(0, 10);
       let free = 0;
       for (const room of active) {
+        const blocked = roomBlocks.some(
+          (bl) => bl.roomId === room._id && bl.start <= date && bl.end > date,
+        );
+        if (blocked) continue;
         const roomBookings = holding.filter(
           (b) => b.roomId === room._id && b.checkIn <= date && b.checkOut > date,
         );
@@ -269,6 +282,12 @@ export const createRequest = mutation({
       ctx.db.query("bookings").collect(),
     ]);
     const taken = bookings.filter((b) => overlaps(b, args.checkIn, args.checkOut));
+    const roomBlocks = await ctx.db.query("roomBlocks").collect();
+    for (const { room } of chosenRooms) {
+      if (roomBlocks.some((bl) => bl.roomId === room._id && bl.start < args.checkOut && bl.end > args.checkIn)) {
+        throw new Error(`${room.name} is unavailable for those dates`);
+      }
+    }
 
     const roomId = chosenRoom._id;
     let bedId = undefined;

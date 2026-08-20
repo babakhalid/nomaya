@@ -47,6 +47,15 @@ export async function assertSlotFree(
       `Slot already booked ${clash.checkIn} → ${clash.checkOut}`,
     );
   }
+  // Admin date blocks (renovation etc.) also make the room unbookable.
+  const blocks = await ctx.db
+    .query("roomBlocks")
+    .withIndex("by_room", (q) => q.eq("roomId", roomId))
+    .collect();
+  const blocked = blocks.find((bl) => bl.start < checkOut && bl.end > checkIn);
+  if (blocked) {
+    throw new Error(`Room is blocked ${blocked.start} → ${blocked.end} (${blocked.reason})`);
+  }
 }
 
 // ── Queries ────────────────────────────────────────────────────────────

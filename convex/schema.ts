@@ -95,6 +95,15 @@ export default defineSchema({
     sortOrder: v.number(),
   }).index("by_room", ["roomId"]),
 
+  // Admin-set date ranges when a room is off the market (renovation, repair…)
+  roomBlocks: defineTable({
+    roomId: v.id("rooms"),
+    start: v.string(), // YYYY-MM-DD inclusive
+    end: v.string(), // YYYY-MM-DD exclusive (checkout-style)
+    reason: v.string(),
+    createdBy: v.optional(v.id("users")),
+  }).index("by_room", ["roomId"]),
+
   activities: defineTable({
     name: v.string(),
     type: v.union(
