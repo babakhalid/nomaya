@@ -291,7 +291,11 @@ export const update = mutation({
 export const setStatus = mutation({
   args: { bookingId: v.id("bookings"), status: bookingStatusValidator },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    // Crew handle daily check-in/out; confirm / cancel / no-show are manager+.
+    const crewAllowed = args.status === "checked_in" || args.status === "checked_out";
+    const actor = crewAllowed
+      ? await requireUser(ctx)
+      : await requireRole(ctx, "manager");
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
     await ctx.db.patch(args.bookingId, { status: args.status });
@@ -319,7 +323,7 @@ export const addActivity = mutation({
     participants: v.number(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const activity = await ctx.db.get(args.activityId);
     if (!activity) throw new Error("Activity not found");
     const id = await ctx.db.insert("bookingActivities", args);
@@ -342,7 +346,7 @@ export const addActivity = mutation({
 export const removeActivity = mutation({
   args: { id: v.id("bookingActivities") },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const item = await ctx.db.get(args.id);
     if (!item) return;
     const activity = await ctx.db.get(item.activityId);
@@ -374,7 +378,7 @@ export const addService = mutation({
     date: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const service = await ctx.db.get(args.serviceId);
     if (!service) throw new Error("Service not found");
     const amount = service.price * args.qty;
@@ -397,7 +401,7 @@ export const addService = mutation({
 export const removeService = mutation({
   args: { id: v.id("bookingServices") },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const item = await ctx.db.get(args.id);
     if (!item) return;
     const service = await ctx.db.get(item.serviceId);
@@ -451,7 +455,7 @@ export const resolveGuestRequest = mutation({
     approve: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     const request = await ctx.db.get(args.requestId);
     if (!request) throw new Error("Request not found");
     if (request.status !== "pending") throw new Error("Already resolved");

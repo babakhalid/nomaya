@@ -17,7 +17,7 @@ export const record = mutation({
     note: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actor = await requireUser(ctx);
+    const actor = await requireRole(ctx, "manager");
     if (args.amount <= 0) throw new Error("Amount must be positive");
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");

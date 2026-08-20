@@ -44,6 +44,9 @@ export default function BookingDetailDrawer({
   const activities = useQuery(api.catalog.listActivities);
   const services = useQuery(api.catalog.listServices);
 
+  const me = useQuery(api.users.me);
+  const canManage = me?.role === "admin" || me?.role === "manager";
+
   const setStatus = useMutation(api.bookings.setStatus);
   const addActivity = useMutation(api.bookings.addActivity);
   const removeActivity = useMutation(api.bookings.removeActivity);
@@ -123,16 +126,19 @@ export default function BookingDetailDrawer({
               >
                 <FilePdf size={14} weight="duotone" /> Confirmation PDF
               </Button>
-              {(NEXT_STATUS[booking.status] ?? []).map((action) => (
-                <Button
-                  key={action.to}
-                  size="sm"
-                  onClick={() => void setStatus({ bookingId, status: action.to })}
-                >
-                  {action.label}
-                </Button>
-              ))}
-              {["inquiry", "confirmed"].includes(booking.status) && (
+              {(NEXT_STATUS[booking.status] ?? [])
+                // Crew handle check-in/out; confirming a booking is manager+.
+                .filter((action) => canManage || action.to !== "confirmed")
+                .map((action) => (
+                  <Button
+                    key={action.to}
+                    size="sm"
+                    onClick={() => void setStatus({ bookingId, status: action.to })}
+                  >
+                    {action.label}
+                  </Button>
+                ))}
+              {canManage && ["inquiry", "confirmed"].includes(booking.status) && (
                 <Button
                   size="sm"
                   variant="danger"
@@ -202,9 +208,11 @@ export default function BookingDetailDrawer({
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-bold">Payments</h3>
-              <Button size="sm" variant="secondary" onClick={() => setShowPayment((s) => !s)}>
-                <Plus size={14} weight="bold" /> Record payment
-              </Button>
+              {canManage && (
+                <Button size="sm" variant="secondary" onClick={() => setShowPayment((s) => !s)}>
+                  <Plus size={14} weight="bold" /> Record payment
+                </Button>
+              )}
             </div>
             <div className="rounded-xl2 border border-sand-200 bg-white p-5">
               <div className="mb-3 flex items-end gap-6">
@@ -288,9 +296,11 @@ export default function BookingDetailDrawer({
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-bold">Activities</h3>
+              {canManage && (
               <Button size="sm" variant="secondary" onClick={() => setShowAddActivity((s) => !s)}>
                 <Plus size={14} weight="bold" /> Add
               </Button>
+              )}
             </div>
             <div className="rounded-xl2 border border-sand-200 bg-white p-5">
               {showAddActivity && (
@@ -343,6 +353,7 @@ export default function BookingDetailDrawer({
                       <span className="flex items-center gap-3">
                         <span className="num text-ink-faint">{item.date}</span>
                         <span className="num">×{item.participants}</span>
+                        {canManage && (
                         <button
                           onClick={() => void removeActivity({ id: item._id })}
                           className="text-ink-faint transition-colors hover:text-coral cursor-pointer"
@@ -350,6 +361,7 @@ export default function BookingDetailDrawer({
                         >
                           <Trash size={14} />
                         </button>
+                        )}
                       </span>
                     </li>
                   ))}
@@ -362,9 +374,11 @@ export default function BookingDetailDrawer({
           <section>
             <div className="mb-2 flex items-center justify-between">
               <h3 className="text-sm font-bold">Services</h3>
+              {canManage && (
               <Button size="sm" variant="secondary" onClick={() => setShowAddService((s) => !s)}>
                 <Plus size={14} weight="bold" /> Add
               </Button>
+              )}
             </div>
             <div className="rounded-xl2 border border-sand-200 bg-white p-5">
               {showAddService && (
@@ -413,6 +427,7 @@ export default function BookingDetailDrawer({
                       <span className="flex items-center gap-3">
                         <span className="num">×{item.qty}</span>
                         <span className="num font-semibold">{eur(item.amount)}</span>
+                        {canManage && (
                         <button
                           onClick={() => void removeService({ id: item._id })}
                           className="text-ink-faint transition-colors hover:text-coral cursor-pointer"
@@ -420,6 +435,7 @@ export default function BookingDetailDrawer({
                         >
                           <Trash size={14} />
                         </button>
+                        )}
                       </span>
                     </li>
                   ))}
@@ -457,7 +473,7 @@ export default function BookingDetailDrawer({
                           </p>
                         )}
                       </div>
-                      {request.status === "pending" ? (
+                      {request.status === "pending" && canManage ? (
                         <span className="flex shrink-0 gap-1.5">
                           <Button
                             size="sm"
