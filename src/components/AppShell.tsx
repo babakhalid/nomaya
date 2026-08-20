@@ -20,21 +20,20 @@ import {
 } from "@phosphor-icons/react";
 import { api } from "../../convex/_generated/api";
 import { cx } from "./ui";
+import { canAccessPage, type Role } from "../lib/roles";
 import { Toaster } from "./toast";
 
 const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: SquaresFour, min: "crew" },
-  { to: "/calendar", label: "Calendar", icon: CalendarBlank, min: "crew" },
-  { to: "/guests", label: "Guests", icon: UsersThree, min: "crew" },
-  { to: "/requests", label: "Requests", icon: Tray, min: "crew" },
-  { to: "/channels", label: "Channels", icon: Plugs, min: "manager" },
-  { to: "/analytics", label: "Analytics", icon: ChartLineUp, min: "manager" },
-  { to: "/team", label: "Team & expenses", icon: Wallet, min: "manager" },
-  { to: "/settings", label: "Settings", icon: GearSix, min: "manager" },
-  { to: "/logs", label: "Logs", icon: ClockCounterClockwise, min: "manager" },
+  { to: "/dashboard", label: "Dashboard", icon: SquaresFour, page: "dashboard" },
+  { to: "/calendar", label: "Calendar", icon: CalendarBlank, page: "calendar" },
+  { to: "/guests", label: "Guests", icon: UsersThree, page: "guests" },
+  { to: "/requests", label: "Requests", icon: Tray, page: "requests" },
+  { to: "/channels", label: "Channels", icon: Plugs, page: "channels" },
+  { to: "/analytics", label: "Analytics", icon: ChartLineUp, page: "analytics" },
+  { to: "/team", label: "Team & expenses", icon: Wallet, page: "team" },
+  { to: "/settings", label: "Settings", icon: GearSix, page: "settings" },
+  { to: "/logs", label: "Logs", icon: ClockCounterClockwise, page: "logs" },
 ] as const;
-
-const RANK = { crew: 0, manager: 1, admin: 2 } as const;
 
 function Brand() {
   return (
@@ -50,10 +49,10 @@ function Brand() {
   );
 }
 
-function NavLinks({ role, onNavigate }: { role: keyof typeof RANK; onNavigate?: () => void }) {
+function NavLinks({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   return (
     <nav className="flex flex-1 flex-col gap-0.5 px-3">
-      {NAV.filter((item) => RANK[role] >= RANK[item.min]).map(
+      {NAV.filter((item) => canAccessPage(role, item.page)).map(
         ({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
@@ -127,7 +126,7 @@ export default function AppShell() {
   // close the mobile menu on navigation
   useEffect(() => setMenuOpen(false), [location.pathname]);
 
-  const role = (me?.role ?? "crew") as keyof typeof RANK;
+  const role = (me?.role ?? "crew") as Role;
   const displayName = me?.name ?? me?.email ?? "…";
 
   return (

@@ -2,9 +2,23 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
-export type Role = "admin" | "manager" | "crew";
+export type Role = "admin" | "manager" | "marketing" | "host" | "crew";
 
-const ROLE_RANK: Record<Role, number> = { crew: 0, manager: 1, admin: 2 };
+// Rank gates manager/admin-only mutations. host & marketing are operational
+// (rank 0, like crew) — their extra reach is page access, not write power.
+const ROLE_RANK: Record<Role, number> = {
+  crew: 0,
+  host: 0,
+  marketing: 0,
+  manager: 1,
+  admin: 2,
+};
+
+// Financial figures (revenue, balances) are hidden from roles without a
+// money mandate: host and crew. admin/manager/marketing see them.
+export function canSeeRevenue(role: Role | undefined): boolean {
+  return role === "admin" || role === "manager" || role === "marketing";
+}
 
 export async function requireUser(
   ctx: QueryCtx | MutationCtx,

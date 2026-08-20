@@ -93,12 +93,22 @@ function TeamTab({ meId }: { meId?: Id<"users"> }) {
                   value={user.role ?? "crew"}
                   disabled={user._id === meId}
                   onChange={(e) =>
-                    void setRole({ userId: user._id, role: e.target.value as "admin" | "manager" | "crew" })
+                    void setRole({
+                      userId: user._id,
+                      role: e.target.value as
+                        | "admin"
+                        | "manager"
+                        | "marketing"
+                        | "host"
+                        | "crew",
+                    })
                   }
-                  className="w-32"
+                  className="w-36"
                 >
                   <option value="admin">Admin</option>
                   <option value="manager">Manager</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="host">Host</option>
                   <option value="crew">Crew</option>
                 </Select>
                 {user._id !== meId && (

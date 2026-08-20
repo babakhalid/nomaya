@@ -5,6 +5,8 @@ import { authTables } from "@convex-dev/auth/server";
 export const roleValidator = v.union(
   v.literal("admin"),
   v.literal("manager"),
+  v.literal("marketing"),
+  v.literal("host"),
   v.literal("crew"),
 );
 

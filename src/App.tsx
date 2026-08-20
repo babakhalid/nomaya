@@ -7,6 +7,7 @@ import {
 } from "convex/react";
 import type { ReactNode } from "react";
 import { api } from "../convex/_generated/api";
+import { canAccessPage, type Page, type Role } from "./lib/roles";
 import AppShell from "./components/AppShell";
 import SignInPage from "./pages/SignInPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -21,18 +22,17 @@ import BookPage from "./pages/BookPage";
 import GuestsPage from "./pages/GuestsPage";
 import RequestsPage from "./pages/RequestsPage";
 
-function RequireRole({
-  min,
+function RequirePage({
+  page,
   children,
 }: {
-  min: "manager" | "admin";
+  page: Page;
   children: ReactNode;
 }) {
   const me = useQuery(api.users.me);
   if (me === undefined) return null;
-  const rank = { crew: 0, manager: 1, admin: 2 } as const;
-  const role = (me?.role ?? "crew") as keyof typeof rank;
-  if (rank[role] < rank[min]) return <Navigate to="/dashboard" replace />;
+  const role = (me?.role ?? "crew") as Role;
+  if (!canAccessPage(role, page)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -68,41 +68,41 @@ export default function App() {
                   <Route
                     path="/channels"
                     element={
-                      <RequireRole min="manager">
+                      <RequirePage page="channels">
                         <ChannelsPage />
-                      </RequireRole>
+                      </RequirePage>
                     }
                   />
                   <Route
                     path="/analytics"
                     element={
-                      <RequireRole min="manager">
+                      <RequirePage page="analytics">
                         <AnalyticsPage />
-                      </RequireRole>
+                      </RequirePage>
                     }
                   />
                   <Route
                     path="/team"
                     element={
-                      <RequireRole min="manager">
+                      <RequirePage page="team">
                         <TeamExpensesPage />
-                      </RequireRole>
+                      </RequirePage>
                     }
                   />
                   <Route
                     path="/settings"
                     element={
-                      <RequireRole min="manager">
+                      <RequirePage page="settings">
                         <SettingsPage />
-                      </RequireRole>
+                      </RequirePage>
                     }
                   />
                   <Route
                     path="/logs"
                     element={
-                      <RequireRole min="manager">
+                      <RequirePage page="logs">
                         <LogsPage />
-                      </RequireRole>
+                      </RequirePage>
                     }
                   />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />

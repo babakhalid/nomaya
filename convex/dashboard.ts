@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
-import { requireUser } from "./lib/access";
+import { canSeeRevenue, requireUser } from "./lib/access";
 
 export const overview = query({
   args: { today: v.string(), monthStart: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const actor = await requireUser(ctx);
+    const showRevenue = canSeeRevenue(actor.role);
     const { today, monthStart } = args;
 
     const [bookings, rooms, beds, roomTypes, payments, pendingRequests, pendingGuestRequests] =
@@ -110,7 +111,7 @@ export const overview = query({
         sellableUnits === 0 ? 0 : Math.round((occupiedUnits / sellableUnits) * 100),
       occupiedUnits,
       sellableUnits,
-      revenueMtd,
+      revenueMtd: showRevenue ? revenueMtd : null,
       pendingChannelRequests: pendingRequests.length,
       pendingGuestRequests: pendingGuestRequests.length,
       activityRoster: Object.values(roster).sort((a, b) =>
@@ -125,7 +126,8 @@ export const overview = query({
 export const period = query({
   args: { start: v.string(), end: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const actor = await requireUser(ctx);
+    const showRevenue = canSeeRevenue(actor.role);
     const [bookings, payments, guests] = await Promise.all([
       ctx.db.query("bookings").collect(),
       ctx.db.query("payments").collect(),
@@ -154,7 +156,7 @@ export const period = query({
       newGuests,
       bookings: inRange.length,
       nights,
-      revenue: Math.round(revenue * 100) / 100,
+      revenue: showRevenue ? Math.round(revenue * 100) / 100 : null,
     };
   },
 });

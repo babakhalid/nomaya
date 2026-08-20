@@ -24,6 +24,7 @@ import {
   cx,
 } from "../components/ui";
 import { eur, isoToday, prettyDateLong, STATUS_LABELS } from "../lib/format";
+import { canSeeRevenue, type Role } from "../lib/roles";
 
 function StatCard({
   label,
@@ -160,6 +161,8 @@ export default function DashboardPage() {
   const monthStart = format(new Date(), "yyyy-MM-01");
   const [rangeStart, setRangeStart] = useState(monthStart);
   const [rangeEnd, setRangeEnd] = useState(today);
+  const me = useQuery(api.users.me);
+  const showRevenue = canSeeRevenue(me?.role as Role | undefined);
   const data = useQuery(api.dashboard.overview, { today, monthStart });
   const period = useQuery(api.dashboard.period, { start: rangeStart, end: rangeEnd });
   const recentLogs = useQuery(api.auditLogs.recent);
@@ -210,13 +213,15 @@ export default function DashboardPage() {
           value={period?.bookings ?? 0}
           icon={<Bed size={20} weight="duotone" />}
         />
-        <StatCard
-          label="Revenue — period"
-          value={period?.revenue ?? 0}
-          icon={<CurrencyEur size={20} weight="duotone" />}
-          accent
-          isCurrency
-        />
+        {showRevenue && (
+          <StatCard
+            label="Revenue — period"
+            value={period?.revenue ?? 0}
+            icon={<CurrencyEur size={20} weight="duotone" />}
+            accent
+            isCurrency
+          />
+        )}
       </div>
 
       {/* Asymmetric 2fr/1fr layout */}
@@ -273,6 +278,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {showRevenue && (
           <div>
             <SectionTitle>Outstanding balances</SectionTitle>
             <div className="rounded-xl2 border border-sand-200 bg-white" style={{ boxShadow: "var(--shadow-diffuse)" }}>
@@ -306,6 +312,7 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Right rail — recent activity feed */}
