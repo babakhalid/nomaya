@@ -33,16 +33,25 @@ export const STATUS_LABELS: Record<string, string> = {
   no_show: "No-show",
 };
 
+/**
+ * Encode one CSV cell. Besides quoting commas/quotes/newlines, it neutralises
+ * spreadsheet formula injection: a cell that a user could start with = + - @
+ * (or tab/CR) is prefixed with a single quote so Excel/Sheets treats it as text
+ * — guest names, notes and expense descriptions are user-controlled.
+ */
+export function csvCell(value: string | number): string {
+  let s = String(value ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 export function downloadCsv(
   filename: string,
   rows: Record<string, string | number>[],
 ) {
   if (rows.length === 0) return;
   const headers = Object.keys(rows[0]);
-  const escape = (value: string | number) => {
-    const s = String(value);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
+  const escape = (value: string | number) => csvCell(value);
   const csv = [
     headers.join(","),
     ...rows.map((row) => headers.map((h) => escape(row[h] ?? "")).join(",")),

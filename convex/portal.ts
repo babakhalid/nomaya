@@ -279,9 +279,10 @@ export const simulateCardPayment = mutation({
       0,
     );
     const balance = Math.round((booking.totalAmount - paid) * 100) / 100;
+    if (!Number.isFinite(args.amount)) throw new Error("Invalid amount");
     const amount = Math.round(args.amount * 100) / 100;
     if (amount < 1) throw new Error("Minimum payment is €1");
-    if (amount > balance + 0.005) {
+    if (amount > balance + 0.01) {
       throw new Error(`Amount exceeds the outstanding balance (€${balance.toFixed(2)})`);
     }
 
@@ -331,6 +332,7 @@ export const declareBankTransfer = mutation({
     if (!tokenBooking) throw new Error("Invalid link");
     // Reference the primary booking so staff match the transfer to the bill.
     const booking = (await bookingGroup(ctx, tokenBooking))[0];
+    if (!Number.isFinite(args.amount)) throw new Error("Invalid amount");
     const amount = Math.round(args.amount * 100) / 100;
     if (amount < 1) throw new Error("Minimum transfer is €1");
     if (amount > 100000) throw new Error("Invalid amount");
