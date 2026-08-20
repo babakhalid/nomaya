@@ -27,6 +27,10 @@ function isoToday() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function isoAddDays(iso: string, days: number) {
+  return new Date(Date.parse(iso) + days * 86400000).toISOString().slice(0, 10);
+}
+
 function nightsBetween(a: string, b: string) {
   return Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
 }
@@ -36,6 +40,9 @@ function validateStay(checkIn: string, checkOut: string) {
     throw new Error("Invalid dates");
   }
   if (checkIn < isoToday()) throw new Error("Check-in must be in the future");
+  if (checkIn > isoAddDays(isoToday(), 540)) {
+    throw new Error("Please pick a date within the next 18 months");
+  }
   const nights = nightsBetween(checkIn, checkOut);
   if (nights < 1) throw new Error("Check-out must be after check-in");
   if (nights > 30) throw new Error("For stays over 30 nights, contact us directly");
@@ -220,6 +227,15 @@ export const createRequest = mutation({
     const fullName = args.fullName.trim();
     if (fullName.length < 2 || fullName.length > 80) throw new Error("Please enter your name");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error("Please enter a valid email");
+    // Bound every free-text / list input so a public form can't bloat the DB.
+    if ((args.allergies?.length ?? 0) > 500) throw new Error("Allergies note is too long");
+    if ((args.notes?.length ?? 0) > 1000) throw new Error("Note is too long");
+    if ((args.phone?.length ?? 0) > 30) throw new Error("Phone number is too long");
+    if ((args.country?.length ?? 0) > 60) throw new Error("Country is too long");
+    if ((args.companions?.length ?? 0) > 12) throw new Error("Too many companions");
+    for (const c of args.companions ?? []) {
+      if (c.name.length > 80) throw new Error("A companion name is too long");
+    }
 
     if (args.roomIds.length < 1) throw new Error("Pick at least one room");
     if (args.roomIds.length > 5) throw new Error("Too many rooms in one request");
@@ -321,7 +337,7 @@ export const createRequest = mutation({
     // Extra services picked at booking time (multiple allowed)
     const extraServices: { serviceId: Id<"services">; qty: number; amount: number }[] = [];
     for (const item of args.services ?? []) {
-      if (item.qty < 1 || item.qty > 30) throw new Error("Invalid service quantity");
+      if (!Number.isInteger(item.qty) || item.qty < 1 || item.qty > 30) throw new Error("Invalid service quantity");
       const service = await ctx.db.get(item.serviceId);
       if (!service || !service.active) throw new Error("Service not available");
       const amount = service.price * item.qty;

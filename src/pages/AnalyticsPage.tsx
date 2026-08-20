@@ -23,7 +23,7 @@ import {
   SectionTitle,
   SkeletonRows,
 } from "../components/ui";
-import { downloadCsv, downloadTextFile, eur, isoToday, SOURCE_LABELS } from "../lib/format";
+import { csvCell, downloadCsv, downloadTextFile, eur, isoToday, SOURCE_LABELS } from "../lib/format";
 
 const PALETTE = ["#0f5c63", "#2b8188", "#4a9fa4", "#7dc0c2", "#e8b04b", "#c05b4d", "#a3906f", "#57503f"];
 
@@ -309,10 +309,7 @@ function buildFullReport(
     expenses: Record<string, unknown>[];
   },
 ) {
-  const esc = (v: unknown) => {
-    const str = String(v ?? "");
-    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
+  const esc = (v: unknown) => csvCell(String(v ?? ""));
   const table = (rows: Record<string, unknown>[]) => {
     if (rows.length === 0) return "(none)\n";
     const keys = Object.keys(rows[0]);
