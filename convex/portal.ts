@@ -6,7 +6,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { surfLevelValidator } from "./schema";
-import { resolveRoomPhoto } from "./inventory";
+
 
 /**
  * Guest portal — public, no auth. Every function is scoped strictly to the
@@ -65,101 +65,87 @@ export const stay = query({
   handler: async (ctx, args) => {
     const tokenBooking = await bookingByToken(ctx, args.token);
     if (!tokenBooking) return null;
-    // Anchor the whole portal to the primary booking so every room's token
-    // shows the same reservation (bill, requests, code).
-    const group = await bookingGroup(ctx, tokenBooking);
-    const booking = group[0];
-    const [guest, room] = await Promise.all([
-      ctx.db.get(booking.guestId),
-      ctx.db.get(booking.roomId),
-    ]);
-    const roomType = room ? await ctx.db.get(room.roomTypeId) : null;
-    const rooms = (
-      await Promise.all(
-        group.map(async (b) => {
-          const r = await ctx.db.get(b.roomId);
-          if (!r) return null;
-          const t = await ctx.db.get(r.roomTypeId);
-          return {
-            name: r.name,
-            typeName: t?.name,
-            description: r.description,
-            imageUrl: await resolveRoomPhoto(ctx, r),
-          };
-        }),
-      )
-    ).filter((r) => r !== null);
-    const totalAdults = group.reduce((n, b) => n + b.adults, 0);
-    const totalChildren = group.reduce((n, b) => n + b.children, 0);
-    const pkg = booking.packageId ? await ctx.db.get(booking.packageId) : null;
-    const [activities, services, myRequests, myActivities, myPayments] =
-      await Promise.all([
-        ctx.db.query("activities").collect(),
-        ctx.db.query("services").collect(),
-        ctx.db
-          .query("guestRequests")
-          .withIndex("by_booking", (q) => q.eq("bookingId", booking._id))
-          .collect(),
-        ctx.db
-          .query("bookingActivities")
-          .withIndex("by_booking", (q) => q.eq("bookingId", booking._id))
-          .collect(),
-        ctx.db
+
+    // A surf booking is a set of session spots sharing one reservation code.
+    const siblings = tokenBooking.reservationCode
+      ? await ctx.db
+          .query("bookings")
+          .withIndex("by_reservationCode", (q) =>
+            q.eq("reservationCode", tokenBooking.reservationCode),
+          )
+          .collect()
+      : [tokenBooking];
+    const group = siblings
+      .filter((b) => b.status !== "cancelled")
+      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+    const primary = group.find((b) => b._id === tokenBooking._id) ?? group[0];
+    const guest = await ctx.db.get(primary.guestId);
+
+    // Each booking = one spot in one session on one date.
+    const sessions = await Promise.all(
+      group.map(async (b) => {
+        const room = await ctx.db.get(b.roomId);
+        const type = room ? await ctx.db.get(room.roomTypeId) : null;
+        const bed = b.bedId ? await ctx.db.get(b.bedId) : null;
+        const pays = await ctx.db
           .query("payments")
-          .withIndex("by_booking", (q) => q.eq("bookingId", booking._id))
-          .collect(),
-      ]);
-    const paid = myPayments.reduce(
-      (sum, p) => sum + (p.direction === "in" ? p.amount : -p.amount),
-      0,
+          .withIndex("by_booking", (q) => q.eq("bookingId", b._id))
+          .collect();
+        const paid = pays.reduce((s, p) => s + (p.direction === "in" ? p.amount : -p.amount), 0);
+        return {
+          bookingId: b._id,
+          date: b.checkIn,
+          name: room?.name ?? "Session",
+          level: type?.name,
+          spot: bed?.label,
+          price: b.totalAmount,
+          paid: Math.round(paid * 100) / 100,
+          status: b.status,
+        };
+      }),
     );
-    const activityById = new Map(activities.map((a) => [a._id, a]));
+
+    const total = group.reduce((s, b) => s + b.totalAmount, 0);
+    const paid = sessions.reduce((s, x) => s + x.paid, 0);
+
+    const [activities, services, myRequests, allPayments] = await Promise.all([
+      ctx.db.query("activities").collect(),
+      ctx.db.query("services").collect(),
+      ctx.db
+        .query("guestRequests")
+        .withIndex("by_booking", (q) => q.eq("bookingId", primary._id))
+        .collect(),
+      Promise.all(
+        group.map((b) =>
+          ctx.db
+            .query("payments")
+            .withIndex("by_booking", (q) => q.eq("bookingId", b._id))
+            .collect(),
+        ),
+      ),
+    ]);
+    const payments = allPayments.flat();
+
     return {
-      guestName: guest?.fullName ?? "Guest",
+      guestName: guest?.fullName ?? "Surfer",
       guestCountry: guest?.country,
-      packageName: pkg?.name,
-      createdAt: booking._creationTime,
+      createdAt: primary._creationTime,
       surfLevel: guest?.surfLevel,
       allergies: guest?.allergies,
-      reservationCode: booking.reservationCode,
-      checkIn: booking.checkIn,
-      checkOut: booking.checkOut,
-      roomName: room?.name,
-      roomTypeName: roomType?.name,
-      roomDescription: room?.description,
-      roomImageUrl: room ? await resolveRoomPhoto(ctx, room) : undefined,
-      rooms,
-      guests: [
-        {
-          name: guest?.fullName ?? "Guest",
-          surfLevel: guest?.surfLevel,
-          lead: true,
-        },
-        ...(booking.companions ?? []).map((c) => ({
-          name: c.name,
-          surfLevel: c.surfLevel,
-          lead: false,
-        })),
-      ],
-      adults: totalAdults,
-      children: totalChildren,
-      // A self-service request only holds the room once a deposit (or the
-      // full amount) is in — until then the stay is a pending request.
-      confirmedStay: booking.status !== "inquiry" || paid > 0,
+      reservationCode: primary.reservationCode,
+      // primary token drives the bill / this portal
+      sessions,
+      sessionCount: sessions.length,
+      confirmedStay: primary.status !== "inquiry" || paid > 0,
       money: {
-        total: booking.totalAmount,
+        total: Math.round(total * 100) / 100,
         paid: Math.round(paid * 100) / 100,
-        balance: Math.round((booking.totalAmount - paid) * 100) / 100,
-        currency: booking.currency,
+        balance: Math.round((total - paid) * 100) / 100,
+        currency: primary.currency,
       },
-      payments: myPayments
+      payments: payments
         .sort((a, b) => b.date.localeCompare(a.date))
-        .map((p) => ({
-          amount: p.amount,
-          direction: p.direction,
-          method: p.method,
-          date: p.date,
-        })),
+        .map((p) => ({ amount: p.amount, direction: p.direction, method: p.method, date: p.date })),
       catalog: {
         activities: activities
           .filter((a) => a.active)
@@ -185,12 +171,6 @@ export const stay = query({
             imageUrl: s.imageUrl,
           })),
       },
-      booked: myActivities.map((a) => ({
-        name: activityById.get(a.activityId)?.name ?? "Activity",
-        startTime: activityById.get(a.activityId)?.startTime,
-        date: a.date,
-        participants: a.participants,
-      })),
       requests: myRequests.map((r) => ({
         _id: r._id,
         type: r.type,
@@ -200,11 +180,10 @@ export const stay = query({
           qty: r.payload.qty,
           date: r.payload.date,
           activityName: r.payload.activityId
-            ? (activityById.get(r.payload.activityId)?.name ?? "Activity")
+            ? (activities.find((a) => a._id === r.payload.activityId)?.name ?? "Activity")
             : undefined,
           serviceName: r.payload.serviceId
-            ? (services.find((s) => s._id === r.payload.serviceId)?.name ??
-              "Service")
+            ? (services.find((s) => s._id === r.payload.serviceId)?.name ?? "Service")
             : undefined,
         },
       })),

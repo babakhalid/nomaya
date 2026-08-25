@@ -485,3 +485,111 @@ export const createRequest = mutation({
     };
   },
 });
+
+/**
+ * Surf-session booking: a surfer books a spot in one or more sessions, each
+ * an (session-slot, date) pair with its own timeslot. Every spot is one
+ * booking row; all share a guest + reservation code so the portal shows the
+ * whole set. Returns the portal token to manage them.
+ */
+export const bookSessions = mutation({
+  args: {
+    fullName: v.string(),
+    email: v.string(),
+    phone: v.optional(v.string()),
+    surfLevel: v.optional(surfLevelValidator),
+    notes: v.optional(v.string()),
+    items: v.array(v.object({ roomId: v.id("rooms"), date: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const fullName = args.fullName.trim();
+    if (fullName.length < 2 || fullName.length > 80) throw new Error("Please enter your name");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(args.email)) throw new Error("Please enter a valid email");
+    if ((args.notes?.length ?? 0) > 1000) throw new Error("Note is too long");
+    if (args.items.length < 1) throw new Error("Pick at least one session");
+    if (args.items.length > 30) throw new Error("Too many sessions in one booking");
+    const today = isoToday();
+
+    const [allBeds, allBookings, roomBlocks] = await Promise.all([
+      ctx.db.query("beds").collect(),
+      ctx.db.query("bookings").collect(),
+      ctx.db.query("roomBlocks").collect(),
+    ]);
+
+    const guestId = await ctx.db.insert("guests", {
+      fullName,
+      email: args.email.trim(),
+      phone: args.phone?.trim() || undefined,
+      surfLevel: args.surfLevel,
+    });
+    const reservationCode = generateReservationCode();
+    const portalToken = generatePortalToken();
+
+    let total = 0;
+    let placed = 0;
+    for (const [i, item] of args.items.entries()) {
+      const date = item.date;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid date");
+      if (date < today) throw new Error("Sessions must be in the future");
+      if (date > isoAddDays(today, 540)) throw new Error("Date too far ahead");
+      const end = isoAddDays(date, 1);
+      const room = await ctx.db.get(item.roomId);
+      if (!room || room.status !== "available") throw new Error("Session not found");
+      const type = await ctx.db.get(room.roomTypeId);
+      if (!type) throw new Error("Session type not found");
+      if (roomBlocks.some((bl) => bl.roomId === room._id && bl.start < end && bl.end > date)) {
+        throw new Error(`${room.name} is closed on ${date}`);
+      }
+      // Grab a free spot (bed) in this session on this date.
+      const overlapping = allBookings.filter(
+        (b) => b.roomId === room._id && b.checkIn < end && b.checkOut > date && b.status !== "cancelled" && b.status !== "no_show",
+      );
+      const takenBeds = new Set(overlapping.map((b) => b.bedId));
+      const spot = allBeds
+        .filter((b) => b.roomId === room._id)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .find((b) => !takenBeds.has(b._id));
+      if (!spot) throw new Error(`${room.name} is full on ${date}`);
+
+      const price = type.basePrice;
+      total += price;
+      const bookingId = await ctx.db.insert("bookings", {
+        guestId,
+        roomId: room._id,
+        bedId: spot._id,
+        checkIn: date,
+        checkOut: end,
+        status: "inquiry",
+        source: "direct",
+        adults: 1,
+        children: 0,
+        totalAmount: price,
+        currency: "EUR",
+        notes: args.notes ? `[Self-service] ${args.notes}` : "[Self-service session booking]",
+        portalToken: i === 0 ? portalToken : generatePortalToken(),
+        reservationCode,
+      });
+      // hold the bed so a concurrent request can't grab it in this loop
+      allBookings.push({
+        _id: bookingId,
+        roomId: room._id,
+        bedId: spot._id,
+        checkIn: date,
+        checkOut: end,
+        status: "inquiry",
+      } as unknown as Doc<"bookings">);
+      placed++;
+    }
+
+    await ctx.db.insert("auditLogs", {
+      actorName: `Surfer: ${fullName} (self-service)`,
+      action: "session.selfBook",
+      entity: "bookings",
+      entityId: reservationCode,
+      summary: `Self-service: ${fullName} booked ${placed} session${placed === 1 ? "" : "s"}`,
+      after: { sessions: placed, total },
+    });
+
+    return { portalToken, reservationCode, total, count: placed };
+  },
+});

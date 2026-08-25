@@ -18,7 +18,7 @@ import TeamExpensesPage from "./pages/TeamExpensesPage";
 import LogsPage from "./pages/LogsPage";
 import SettingsPage from "./pages/SettingsPage";
 import GuestPortalPage from "./pages/GuestPortalPage";
-import BookPage from "./pages/BookPage";
+import BookPage from "./pages/SessionBookPage";
 import GuestsPage from "./pages/GuestsPage";
 import RequestsPage from "./pages/RequestsPage";
 

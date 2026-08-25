@@ -189,25 +189,15 @@ export default function GuestPortalPage() {
               </p>
             </div>
             <div>
-              <p className="text-xs text-ocean-300">Stay</p>
-              <p className="num mt-0.5 font-semibold">
-                {prettyDate(stay.checkIn)} → {prettyDate(stay.checkOut)}
-              </p>
+              <p className="text-xs text-ocean-300">Sessions</p>
+              <p className="num mt-0.5 font-semibold">{stay.sessionCount} booked</p>
             </div>
-            <div>
-              <p className="text-xs text-ocean-300">
-                {stay.rooms.length > 1 ? "Rooms" : "Room"}
-              </p>
-              <p className="mt-0.5 font-semibold">
-                {stay.rooms.length > 1
-                  ? stay.rooms.map((r) => r.name).join(" + ")
-                  : `${stay.roomName} · ${stay.roomTypeName}`}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-ocean-300">Guests</p>
-              <p className="num mt-0.5 font-semibold">{stay.adults + stay.children}</p>
-            </div>
+            {stay.sessions.length > 0 && (
+              <div>
+                <p className="text-xs text-ocean-300">Next session</p>
+                <p className="num mt-0.5 font-semibold">{prettyDate(stay.sessions[0].date)}</p>
+              </div>
+            )}
           </div>
           {stay.money.paid > 0 ? (
             <button
@@ -217,16 +207,12 @@ export default function GuestPortalPage() {
                   guestCountry: stay.guestCountry,
                   reservationCode: stay.reservationCode,
                   bookingDate: stay.createdAt,
-                  roomName:
-                    stay.rooms.length > 1
-                      ? stay.rooms.map((r) => r.name).join(" + ")
-                      : (stay.roomName ?? ""),
-                  roomTypeName:
-                    stay.rooms.length > 1 ? undefined : stay.roomTypeName,
-                  packageName: stay.packageName,
-                  guests: stay.adults + stay.children,
-                  checkIn: stay.checkIn,
-                  checkOut: stay.checkOut,
+                  roomName: `${stay.sessionCount} surf session${stay.sessionCount === 1 ? "" : "s"}`,
+                  roomTypeName: undefined,
+                  packageName: undefined,
+                  guests: 1,
+                  checkIn: stay.sessions[0]?.date ?? "",
+                  checkOut: stay.sessions[stay.sessions.length - 1]?.date ?? "",
                   total: stay.money.total,
                   paid: stay.money.paid,
                 })
@@ -267,82 +253,50 @@ export default function GuestPortalPage() {
             className="portal-item -mt-6 rounded-xl2 border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-900"
             style={{ boxShadow: "var(--shadow-lift)" }}
           >
-            <p className="font-bold">
-              Your {stay.rooms.length > 1 ? "rooms are" : "room is"} not reserved yet.
-            </p>
+            <p className="font-bold">Your sessions aren't confirmed yet.</p>
             <p className="mt-1">
-              A reservation is only confirmed once a deposit (or the full amount) is
-            paid. Head to the "Your bill" section below to secure your stay.
+              A booking is only confirmed once a deposit (or the full amount) is
+              paid. Head to the "Your bill" section below to secure your spots.
             </p>
           </div>
         )}
 
-        {/* Your room(s) */}
-        {stay.rooms.filter((r) => r.imageUrl).map((room, i) => (
-          <div
-            key={room.name}
-            className={`portal-item ${i === 0 && stay.confirmedStay ? "-mt-6" : "mt-6"} overflow-hidden rounded-xl2 border border-sand-200 bg-white`}
-            style={{ boxShadow: "var(--shadow-lift)" }}
-          >
-            <div className="relative">
-              <img
-                src={room.imageUrl}
-                alt={room.name}
-                className="h-56 w-full object-cover"
-                loading="lazy"
-              />
-              <span className="absolute bottom-3 left-3 rounded-full bg-ink/60 px-3 py-1 text-xs font-bold text-sand-50 backdrop-blur-sm">
-                {room.name}
-                {room.typeName ? ` · ${room.typeName}` : ""}
-              </span>
-              {!stay.confirmedStay && (
-                <span className="absolute right-3 top-3 rounded-full bg-amber-400/95 px-3 py-1 text-xs font-bold text-amber-950">
-                  Not reserved yet
-                </span>
-              )}
-            </div>
-            {room.description && (
-              <p className="px-5 py-4 text-sm leading-relaxed text-ink-soft">
-                {room.description}
-              </p>
-            )}
-          </div>
-        ))}
-
-        {/* Who's coming */}
-        {stay.guests.length > 1 && (
-          <section
-            className="portal-item mt-8 rounded-xl2 border border-sand-200 bg-white p-6"
-            style={{ boxShadow: "var(--shadow-diffuse)" }}
-          >
-            <h2 className="font-bold tracking-tight">Who's coming</h2>
-            <p className="mt-1 text-sm text-ink-faint">
-              Everyone on reservation {stay.reservationCode}.
-            </p>
-            <ul className="mt-4 flex flex-col divide-y divide-sand-100">
-              {stay.guests.map((g, i) => (
-                <li key={`${g.name}-${i}`} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                  <span className="font-semibold">{g.name}</span>
-                  <span className="flex items-center gap-2">
-                    {g.surfLevel && (
-                      <span className="rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-semibold capitalize text-ink-soft">
-                        {g.surfLevel}
-                      </span>
-                    )}
-                    {g.lead && (
-                      <span className="rounded-full bg-ocean-800 px-2.5 py-0.5 text-xs font-bold text-sand-50">
-                        Lead guest
-                      </span>
-                    )}
+        {/* Your sessions */}
+        <section
+          className="portal-item -mt-6 rounded-xl2 border border-sand-200 bg-white p-6"
+          style={{ boxShadow: "var(--shadow-lift)" }}
+        >
+          <h2 className="font-bold tracking-tight">Your sessions</h2>
+          <p className="mt-1 text-sm text-ink-faint">
+            {stay.sessionCount} spot{stay.sessionCount === 1 ? "" : "s"} on reservation {stay.reservationCode}.
+          </p>
+          <ul className="mt-4 flex flex-col divide-y divide-sand-100">
+            {stay.sessions.map((sess) => (
+              <li key={sess.bookingId} className="flex items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{sess.name}</p>
+                  <p className="num text-xs text-ink-faint">
+                    {prettyDate(sess.date)}
+                    {sess.spot ? ` · ${sess.spot}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
+                      sess.paid > 0 ? "bg-kelp/10 text-kelp" : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {sess.paid > 0 ? "Confirmed" : "Pending"}
                   </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+                  <span className="num font-semibold">{eur(sess.price)}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
 
         {/* Preferences */}
-        <section className={`portal-item ${stay.rooms.some((r) => r.imageUrl) || stay.guests.length > 1 || !stay.confirmedStay ? "mt-8" : "-mt-6"} rounded-xl2 border border-sand-200 bg-white p-6`} style={{ boxShadow: "var(--shadow-lift)" }}>
+        <section className="portal-item mt-8 rounded-xl2 border border-sand-200 bg-white p-6" style={{ boxShadow: "var(--shadow-lift)" }}>
           <h2 className="font-bold tracking-tight">About you</h2>
           <p className="mt-1 text-sm text-ink-faint">
             Helps us group surf sessions and cook the right food.
@@ -444,8 +398,8 @@ export default function GuestPortalPage() {
               <Field label="Preferred date">
                 <Input
                   type="date"
-                  min={stay.checkIn}
-                  max={stay.checkOut}
+                  min={stay.sessions[0]?.date}
+                  max={stay.sessions[stay.sessions.length - 1]?.date}
                   value={pickerDate}
                   onChange={(e) => setPickerDate(e.target.value)}
                 />
@@ -538,27 +492,11 @@ export default function GuestPortalPage() {
         />
 
         {/* Already booked + request history */}
-        {(stay.booked.length > 0 || stay.requests.length > 0) && (
+        {stay.requests.length > 0 && (
           <section className="portal-item mt-8">
             <h2 className="mb-3 font-bold tracking-tight">Your plan</h2>
             <div className="rounded-xl2 border border-sand-200 bg-white" style={{ boxShadow: "var(--shadow-diffuse)" }}>
               <ul className="divide-y divide-sand-100">
-                {stay.booked.map((item, i) => (
-                  <li key={`b${i}`} className="flex items-center justify-between px-5 py-3 text-sm">
-                    <span className="font-medium">
-                      {item.name}
-                      {item.startTime && (
-                        <span className="num ml-2 text-xs font-bold text-ocean-700">
-                          {item.startTime}
-                        </span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-3">
-                      <span className="num text-ink-faint">{prettyDate(item.date)}</span>
-                      <Badge tone="green">Booked</Badge>
-                    </span>
-                  </li>
-                ))}
                 {stay.requests.map((request) => (
                   <li key={request._id} className="flex items-center justify-between px-5 py-3 text-sm">
                     <span className={cx("font-medium", request.status === "declined" && "line-through opacity-50")}>
