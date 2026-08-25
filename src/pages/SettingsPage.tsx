@@ -17,7 +17,7 @@ import {
 import { eur } from "../lib/format";
 import { errorMessage, toast } from "../components/toast";
 
-const TABS = ["Team", "Rooms", "Activities", "Services", "Packages", "Tracking"] as const;
+const TABS = ["Team", "Sessions", "Activities", "Services", "Packages", "Tracking"] as const;
 type Tab = (typeof TABS)[number];
 
 export default function SettingsPage() {
@@ -61,7 +61,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === "Team" && isAdmin && <TeamTab meId={me?._id} />}
-      {tab === "Rooms" && !isMarketing && <RoomsTab />}
+      {tab === "Sessions" && !isMarketing && <RoomsTab />}
       {tab === "Activities" && !isMarketing && <ActivitiesTab />}
       {tab === "Services" && !isMarketing && <ServicesTab />}
       {tab === "Packages" && !isMarketing && <PackagesTab />}
@@ -266,10 +266,10 @@ function RoomsTab() {
     <div>
       <div className="mb-4 flex justify-end gap-2">
         <Button size="sm" variant="secondary" onClick={() => setEditing("new-type")}>
-          <Plus size={14} weight="bold" /> Room type
+          <Plus size={14} weight="bold" /> Session type
         </Button>
         <Button size="sm" onClick={() => setEditing("new-room")}>
-          <Plus size={14} weight="bold" /> Room
+          <Plus size={14} weight="bold" /> Session
         </Button>
       </div>
 
@@ -297,8 +297,8 @@ function RoomsTab() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{room.name}</p>
                     <p className="text-xs text-ink-faint">
-                      {type?.name} · {type?.mode === "dorm" ? `${bedCount} beds` : `sleeps ${type?.capacity}`} ·{" "}
-                      {eur(type?.basePrice ?? 0)}/night{type?.mode === "dorm" ? " per bed" : ""}
+                      {type?.name} · {type?.mode === "dorm" ? `${bedCount} spots` : `${type?.capacity} spots`} ·{" "}
+                      {eur(type?.basePrice ?? 0)}{type?.mode === "dorm" ? " / spot" : " / session"}
                     </p>
                   </div>
                   {room.status === "maintenance" && <Badge tone="red">Maintenance</Badge>}

@@ -30,6 +30,7 @@ import type * as portal from "../portal.js";
 import type * as publicBooking from "../publicBooking.js";
 import type * as requests from "../requests.js";
 import type * as seed from "../seed.js";
+import type * as seedSurfSchool from "../seedSurfSchool.js";
 import type * as team from "../team.js";
 import type * as tracking from "../tracking.js";
 import type * as users from "../users.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   publicBooking: typeof publicBooking;
   requests: typeof requests;
   seed: typeof seed;
+  seedSurfSchool: typeof seedSurfSchool;
   team: typeof team;
   tracking: typeof tracking;
   users: typeof users;

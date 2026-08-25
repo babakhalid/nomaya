@@ -155,7 +155,7 @@ export default function GuestPortalPage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-sand-50/90">
               <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
             </span>
-            <span className="font-black tracking-tight">Get Salty Surf Camp</span>
+            <span className="font-black tracking-tight">Surf School Rabat</span>
           </div>
           <h1 className="portal-item mt-8 text-3xl font-black tracking-tighter">
             Salam, {stay.guestName.split(" ")[0]}.
@@ -582,7 +582,7 @@ export default function GuestPortalPage() {
         )}
 
         <p className="portal-item mt-10 text-center text-xs text-ink-faint">
-          Get Salty Surf Camp · Tamraght, Morocco · See you in the water.
+          Surf School Rabat · Tamraght, Morocco · See you in the water.
         </p>
       </div>
     </div>

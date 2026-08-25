@@ -252,8 +252,8 @@ export default function CalendarPage() {
         <div>
           <h1 className="text-2xl font-black tracking-tight">Calendar</h1>
           <p className="mt-1 text-sm text-ink-faint">
-            Drag across empty nights to book. Drag a booking to move it, pull its
-            edges to extend — pricing recalculates automatically.
+            Drag across open days to add a surfer. Drag a booking to move it, pull
+            its edges to extend — pricing recalculates automatically.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -334,7 +334,7 @@ export default function CalendarPage() {
             style={{ gridTemplateColumns: `${LABEL_W}px repeat(${days.length}, ${COL_W}px)` }}
           >
             <div className="sticky left-0 z-50 border-r border-sand-200 bg-sand-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-ink-faint">
-              Rooms & beds
+              Sessions & spots
             </div>
             {days.map((day, i) => {
               const iso = format(day, "yyyy-MM-dd");
@@ -714,13 +714,13 @@ export default function CalendarPage() {
             }}
           >
             <p className="text-sm text-ink-faint">
-              Take a room off the calendar for renovation, repairs or any reason.
-              Guests can't book it and staff can't drag a stay onto it.
+              Close a session for maintenance, weather or any reason. Nobody can book
+              it and staff can't drag a booking onto it.
             </p>
             <Field label="Room">
               <Select name="roomId" required defaultValue="">
                 <option value="" disabled>
-                  Choose a room…
+                  Choose a session…
                 </option>
                 {Array.from(
                   new Map(rows.map((r) => [r.roomId, r.roomName])).entries(),

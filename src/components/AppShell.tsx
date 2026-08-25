@@ -26,7 +26,7 @@ import { Toaster } from "./toast";
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: SquaresFour, page: "dashboard" },
   { to: "/calendar", label: "Calendar", icon: CalendarBlank, page: "calendar" },
-  { to: "/guests", label: "Guests", icon: UsersThree, page: "guests" },
+  { to: "/guests", label: "Surfers", icon: UsersThree, page: "guests" },
   { to: "/requests", label: "Requests", icon: Tray, page: "requests" },
   { to: "/channels", label: "Channels", icon: Plugs, page: "channels" },
   { to: "/analytics", label: "Analytics", icon: ChartLineUp, page: "analytics" },
@@ -42,8 +42,8 @@ function Brand() {
         <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
       </span>
       <div className="leading-tight">
-        <p className="text-[15px] font-black tracking-tight">Get Salty</p>
-        <p className="text-[11px] font-medium text-ink-faint">Tamraght Surf Camp</p>
+        <p className="text-[15px] font-black tracking-tight">Surf School Rabat</p>
+        <p className="text-[11px] font-medium text-ink-faint">Rabat, Morocco</p>
       </div>
     </div>
   );

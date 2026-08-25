@@ -80,14 +80,14 @@ export function generatePortalToken(): string {
   return token;
 }
 
-/** Short reservation code guests can read out loud: GS-4F7K2 */
+/** Short reservation code guests can read out loud: SSR-4F7K2 */
 export function generateReservationCode(): string {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L
   let code = "";
   const bytes = new Uint8Array(5);
   crypto.getRandomValues(bytes);
   for (const b of bytes) code += alphabet[b % alphabet.length];
-  return `GS-${code}`;
+  return `SSR-${code}`;
 }
 
 /** Compare phone numbers loosely: digits only, match on the last 9. */

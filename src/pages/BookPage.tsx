@@ -269,9 +269,9 @@ export default function BookPage() {
           : !datesValid
             ? "Pick your dates"
             : selectedRooms.length === 0
-              ? "Choose a room"
+              ? "Choose a session"
               : !roomFits
-                ? `Selected rooms sleep ${selectedCapacity} — add another room for ${totalGuests} guests`
+                ? `Selected sessions hold ${selectedCapacity} — add another for ${totalGuests} surfers`
                 : !formuleOk
                   ? totalGuests < minGuestsNeeded
                     ? `${selectedPackage?.name} needs at least ${minGuestsNeeded} guests`
@@ -377,9 +377,9 @@ export default function BookPage() {
                 <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
               </span>
               <div>
-                <p className="font-black tracking-tight">Get Salty Morocco</p>
+                <p className="font-black tracking-tight">Surf School Rabat</p>
                 <p className="text-xs text-ocean-200">
-                  Book your stay · no charge until confirmed
+                  Book your surf sessions · no charge until confirmed
                 </p>
               </div>
             </div>
@@ -442,8 +442,8 @@ export default function BookPage() {
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
           <div className="min-w-0 flex-1">
-            <p className="font-black tracking-tight">Get Salty Morocco</p>
-            <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
+            <p className="font-black tracking-tight">Surf School Rabat</p>
+            <p className="text-xs text-ocean-200">Book your surf sessions · no charge until confirmed</p>
           </div>
           {/* Selected formule */}
           <div className="flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 py-1.5 pl-1.5 pr-4">
@@ -675,7 +675,7 @@ export default function BookPage() {
               {totalGuests > 0 && datesValid && (
                 <section className="flow-in mt-10">
                   <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="font-bold tracking-tight">Where do you want to sleep?</h2>
+                    <h2 className="font-bold tracking-tight">Pick your session</h2>
                     {totalGuests > 1 && (
                       <span
                         className={cx(
@@ -687,13 +687,13 @@ export default function BookPage() {
                       >
                         {selectedCapacity >= totalGuests
                           ? `${selectedCapacity} spots — all ${totalGuests} guests fit`
-                          : `${selectedCapacity}/${totalGuests} guests placed — combine rooms`}
+                          : `${selectedCapacity}/${totalGuests} surfers placed — add sessions`}
                       </span>
                     )}
                   </div>
                   {totalGuests > 1 && (
                     <p className="mb-3 text-xs text-ink-faint">
-                      Groups welcome — select several rooms until everyone has a bed.
+                      Groups welcome — pick sessions until everyone has a spot.
                     </p>
                   )}
                   {availability === undefined ? (
@@ -756,7 +756,7 @@ export default function BookPage() {
                                 </p>
                                 <p className="mt-2 flex items-center gap-1.5 text-xs text-ink-soft">
                                   <Users size={13} />
-                                  {room.mode === "dorm" ? "per bed" : `sleeps ${room.capacity}`}
+                                  {room.mode === "dorm" ? "per spot" : `${room.capacity} spots`}
                                   <span className="text-ink-faint">· {room.typeName}</span>
                                 </p>
                               </div>
@@ -773,7 +773,7 @@ export default function BookPage() {
                                     <p className="num text-lg font-bold text-ocean-700">
                                       {eur(room.pricePerNight)}
                                     </p>
-                                    <p className="text-[11px] text-ink-faint">/night</p>
+                                    <p className="text-[11px] text-ink-faint">/spot</p>
                                   </>
                                 )}
                               </div>
@@ -1566,7 +1566,7 @@ function PaymentStep({
             <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm">
               <p>
                 <span className="text-xs text-ink-faint">Beneficiary </span>
-                <span className="font-semibold">Get Salty Surf Camp SARL</span>
+                <span className="font-semibold">Surf School Rabat SARL</span>
               </p>
               <p className="num mt-1">
                 <span className="font-sans text-xs text-ink-faint">IBAN </span>
