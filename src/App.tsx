@@ -19,6 +19,7 @@ import LogsPage from "./pages/LogsPage";
 import SettingsPage from "./pages/SettingsPage";
 import GuestPortalPage from "./pages/GuestPortalPage";
 import BookPage from "./pages/BookPage";
+import YoumakeBadge from "./components/YoumakeBadge";
 import GuestsPage from "./pages/GuestsPage";
 import RequestsPage from "./pages/RequestsPage";
 
@@ -40,9 +41,9 @@ export default function App() {
   return (
     <Routes>
       {/* Public pages — outside auth entirely */}
-      <Route path="/" element={<BookPage />} />
+      <Route path="/" element={<><BookPage /><YoumakeBadge /></>} />
       <Route path="/book" element={<Navigate to="/" replace />} />
-      <Route path="/guest/:token" element={<GuestPortalPage />} />
+      <Route path="/guest/:token" element={<><GuestPortalPage /><YoumakeBadge /></>} />
       {/* Staff entrance — any backend link works; /admin is the memorable one */}
       <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
 
