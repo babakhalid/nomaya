@@ -22,7 +22,7 @@ export type ConfirmationData = {
 };
 
 const HOUSE = {
-  brand: "Get Salty Morocco",
+  brand: "Azul Surf",
   legal: "Legal registration: Disconnect Travel SARL | ICE: 003424261000018",
   address1: "Hay Tissaliouine Tamraght Aourir",
   address2: "Agadir, 80750",
@@ -86,7 +86,7 @@ export function downloadBookingConfirmation(data: ConfirmationData) {
   y += 22;
 
   const intro = doc.splitTextToSize(
-    "We are writing to confirm your reservation with Get Salty Guest house. Below are the details of your booking:",
+    "We are writing to confirm your reservation with Azul Surf Guest house. Below are the details of your booking:",
     textWidth,
   );
   doc.text(intro, margin, y);

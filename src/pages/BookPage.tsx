@@ -377,7 +377,7 @@ export default function BookPage() {
                 <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
               </span>
               <div>
-                <p className="font-black tracking-tight">Get Salty Morocco</p>
+                <p className="font-black tracking-tight">Azul Surf</p>
                 <p className="text-xs text-ocean-200">
                   Book your stay · no charge until confirmed
                 </p>
@@ -442,7 +442,7 @@ export default function BookPage() {
             <img src="/mascot.png" alt="" className="h-8 w-8 object-contain" />
           </Link>
           <div className="min-w-0 flex-1">
-            <p className="font-black tracking-tight">Get Salty Morocco</p>
+            <p className="font-black tracking-tight">Azul Surf</p>
             <p className="text-xs text-ocean-200">Book your stay · no charge until confirmed</p>
           </div>
           {/* Selected formule */}
@@ -1566,7 +1566,7 @@ function PaymentStep({
             <div className="rounded-xl border border-sand-200 bg-sand-50 p-4 text-sm">
               <p>
                 <span className="text-xs text-ink-faint">Beneficiary </span>
-                <span className="font-semibold">Get Salty Surf Camp SARL</span>
+                <span className="font-semibold">Azul Surf SARL</span>
               </p>
               <p className="num mt-1">
                 <span className="font-sans text-xs text-ink-faint">IBAN </span>
