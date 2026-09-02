@@ -70,3 +70,20 @@ export const run = internalMutation({
     return "Azul seeded: 5 rooms, catalog, 4 demo bookings.";
   },
 });
+
+// Remove my diagnostic test bookings/guests (Prod Test, Test *, Group Test).
+export const cleanupTests = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const names = ["Prod Test", "Test Guest", "Test Pkg", "Test Dorm", "Group Test"];
+    const guests = await ctx.db.query("guests").collect();
+    let n = 0;
+    for (const g of guests) {
+      if (!names.includes(g.fullName)) continue;
+      const bks = await ctx.db.query("bookings").withIndex("by_guest", (q) => q.eq("guestId", g._id)).collect();
+      for (const b of bks) { await ctx.db.delete(b._id); n++; }
+      await ctx.db.delete(g._id);
+    }
+    return `Removed ${n} test bookings.`;
+  },
+});
